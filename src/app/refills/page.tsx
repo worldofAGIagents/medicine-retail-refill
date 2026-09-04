@@ -62,6 +62,7 @@ export default function RefillsPage() {
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchMode, setBatchMode] = useState<'cloudApi' | 'webQueue'>('webQueue');
   const [batchCompleteMsg, setBatchCompleteMsg] = useState('');
+  const [pharmacyName, setPharmacyName] = useState('MedRefill Chemist & Druggist');
 
   const loadRefills = () => {
     setLoading(true);
@@ -72,6 +73,13 @@ export default function RefillsPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    fetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.pharmacyName) setPharmacyName(data.pharmacyName);
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -217,7 +225,7 @@ export default function RefillsPage() {
     if (batchIndex < batchQueue.length) {
       const current = batchQueue[batchIndex];
       const encodedMsg = encodeURIComponent(
-        `नमस्ते ${current.customer.name} जी, आपकी दवाई ${current.medicine.name} ${current.refillCalc.daysRemaining <= 0 ? 'समाप्त हो चुकी है' : `${current.refillCalc.daysRemaining} दिन में समाप्त होने वाली है`}। क्या हम फ्री होम डिलीवरी भेज दें? रिप्लाई में YES भेजें। - Apollo Lifeline Pharmacy`
+        `नमस्ते ${current.customer.name} जी, आपकी दवाई ${current.medicine.name} ${current.refillCalc.daysRemaining <= 0 ? 'समाप्त हो चुकी है' : `${current.refillCalc.daysRemaining} दिन में समाप्त होने वाली है`}। क्या हम फ्री होम डिलीवरी भेज दें? रिप्लाई में YES भेजें। - ${pharmacyName}`
       );
       const cleanDigits = current.customer.phone.replace(/[^0-9]/g, '');
       const phone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
@@ -380,17 +388,17 @@ export default function RefillsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-gray-900">Refill Alert &amp; Dispatch Center</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Refill Alert &amp; Dispatch Center</h1>
+            <p className="text-xs sm:text-sm text-gray-500">
               Predictive refill tracking, 1-Click WhatsApp automation, and daily delivery sheets
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             {/* Daily PDF Sheet Button */}
             <Link
               href="/delivery-sheet"
-              className="border border-teal-600 bg-white hover:bg-teal-50 text-teal-700 px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xs transition-colors"
+              className="border border-teal-600 bg-white hover:bg-teal-50 text-teal-700 px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors text-center"
             >
               <Printer size={16} /> Print Daily Delivery Plan (PDF)
             </Link>
@@ -398,7 +406,7 @@ export default function RefillsPage() {
             {/* 1-Click Batch WhatsApp Button */}
             <button
               onClick={handleOpenBatchRunner}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-colors"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors text-center"
             >
               <FastForward size={16} /> 1-Click Batch WhatsApp ({overdue.length + dueToday.length})
             </button>
@@ -528,10 +536,10 @@ export default function RefillsPage() {
         {/* ---------------- 1-CLICK BATCH WHATSAPP AUTOMATION MODAL ---------------- */}
         {showBatchModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-scaleUp">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-start border-b pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center shrink-0">
                     <FastForward className="w-5 h-5" />
                   </div>
                   <div>
@@ -539,30 +547,30 @@ export default function RefillsPage() {
                     <p className="text-xs text-gray-500">Queue of {batchQueue.length} Overdue &amp; Due Patients</p>
                   </div>
                 </div>
-                <button onClick={() => setShowBatchModal(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setShowBatchModal(false)} className="text-gray-400 hover:text-gray-600 p-1">
                   <X size={20} />
                 </button>
               </div>
 
               {/* MODE SELECTION: Zero-Cost Assisted Queue vs Cloud API */}
-              <div className="grid grid-cols-2 gap-3 p-1.5 bg-gray-100 rounded-xl text-xs font-bold">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1.5 bg-gray-100 rounded-xl text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setBatchMode('webQueue')}
-                  className={`py-2 rounded-lg transition-colors ${
+                  className={`py-2 px-2 rounded-lg transition-colors text-center ${
                     batchMode === 'webQueue' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'
                   }`}
                 >
-                  🚀 Rapid Web Queue (Free / No Ban)
+                  🚀 Rapid Web Queue (Free)
                 </button>
                 <button
                   type="button"
                   onClick={() => setBatchMode('cloudApi')}
-                  className={`py-2 rounded-lg transition-colors ${
+                  className={`py-2 px-2 rounded-lg transition-colors text-center ${
                     batchMode === 'cloudApi' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'
                   }`}
                 >
-                  ⚡ WhatsApp Cloud API (1-Click Background)
+                  ⚡ Cloud API (1-Click)
                 </button>
               </div>
 
@@ -635,7 +643,7 @@ export default function RefillsPage() {
         {/* ---------------- SINGLE WHATSAPP PREVIEW MODAL ---------------- */}
         {whatsappModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-scaleUp">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-4 animate-scaleUp max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-start border-b pb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center">

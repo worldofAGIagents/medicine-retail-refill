@@ -148,18 +148,18 @@ export default function DashboardPage() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Upcoming Refills Table - 2/3 width */}
-        <div className="xl:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="xl:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 font-heading">Upcoming Refills</h3>
-              <p className="text-sm text-gray-500">Chronic medicine refills sorted by urgency</p>
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-heading">Upcoming Refills</h3>
+              <p className="text-xs sm:text-sm text-gray-500">Chronic medicine refills sorted by urgency</p>
             </div>
-            <Link href="/refills" className="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1">
+            <Link href="/refills" className="text-xs sm:text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1">
               View All <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[650px]">
               <thead>
                 <tr className="border-b border-gray-50">
                   <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer</th>

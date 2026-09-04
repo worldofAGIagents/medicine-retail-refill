@@ -262,15 +262,15 @@ export default function PrescriptionsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-gray-900">Chronic & Infant Refill Prescriptions</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Chronic &amp; Infant Refill Prescriptions</h1>
+            <p className="text-xs sm:text-sm text-gray-500">
               Manage repeat subscriptions for chronic medicines, infant milk formulas, and packaging sizes
             </p>
           </div>
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
-              className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors"
+              className="w-full sm:w-auto justify-center bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors"
             >
               <Plus size={18} /> Add New Prescription
             </button>
@@ -286,7 +286,7 @@ export default function PrescriptionsPage() {
 
         {/* ---------------- NEW PRESCRIPTION FORM ---------------- */}
         {showForm && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-6 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 space-y-6 animate-fadeIn">
             <div className="flex justify-between items-center border-b pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
@@ -751,18 +751,18 @@ export default function PrescriptionsPage() {
               </div>
 
               {/* Form Buttons */}
-              <div className="flex justify-end gap-3 pt-3 border-t">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                  className="w-full sm:w-auto px-5 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting || !customerId || !medicineId}
-                  className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl font-semibold text-xs shadow-sm transition-colors"
+                  className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl font-semibold text-xs shadow-sm transition-colors text-center"
                 >
                   {submitting ? 'Activating...' : 'Save Prescription & Activate Refill'}
                 </button>
@@ -780,7 +780,7 @@ export default function PrescriptionsPage() {
             </div>
 
             {/* Category Filter Pills on Table */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
               <div className="flex gap-1.5 overflow-x-auto pb-1">
                 {allCategories.map((c) => (
                   <button
@@ -797,14 +797,14 @@ export default function PrescriptionsPage() {
                 ))}
               </div>
 
-              <div className="relative">
+              <div className="relative w-full sm:w-48">
                 <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
                 <input
                   type="text"
                   placeholder="Filter prescriptions..."
                   value={tableSearch}
                   onChange={(e) => setTableSearch(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-xl w-48 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-xl w-full focus:outline-none focus:ring-1 focus:ring-teal-500"
                 />
               </div>
             </div>
@@ -820,7 +820,7 @@ export default function PrescriptionsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse">
+              <table className="w-full min-w-[850px] text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     <th className="py-3.5 px-6">Patient / Customer</th>

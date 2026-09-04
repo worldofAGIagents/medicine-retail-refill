@@ -44,12 +44,13 @@ export default function DeliverySheetPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'today' | 'tomorrow' | 'dayAfter' | 'overdue'>('all');
   const [riderName, setRiderName] = useState('Rahul Verma (Rider #1)');
-  const [pharmacyName, setPharmacyName] = useState('Apollo Lifeline Pharmacy & Surgical');
-  const [dlNumber, setDlNumber] = useState('DL-20B/21B-49201-UP');
+  const [pharmacyName, setPharmacyName] = useState('MedRefill Chemist & Druggist');
+  const [dlNumber, setDlNumber] = useState('DL-20B/12345/2022');
   const [packedItems, setPackedItems] = useState<Record<string, boolean>>({});
   const [deliveredItems, setDeliveredItems] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    // Load refills
     fetch('/api/refills')
       .then((res) => res.json())
       .then((data) => {
@@ -57,6 +58,15 @@ export default function DeliverySheetPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    // Load settings from DB
+    fetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.pharmacyName) setPharmacyName(data.pharmacyName);
+        if (data?.dlNumber) setDlNumber(data.dlNumber);
+      })
+      .catch(() => {});
   }, []);
 
   const todayDateStr = new Date().toLocaleDateString('en-IN', {
@@ -221,7 +231,7 @@ export default function DeliverySheetPage() {
         </div>
 
         {/* ---------------- THE PRINTABLE A4 SHEET ---------------- */}
-        <div className="printable-sheet bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8 space-y-6">
+        <div className="printable-sheet bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 lg:p-8 space-y-6">
           
           {/* Pharmacy & Sheet Header */}
           <div className="border-b-2 border-gray-800 pb-4">
@@ -273,7 +283,7 @@ export default function DeliverySheetPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border border-gray-300">
+              <table className="w-full min-w-[800px] text-left text-xs border border-gray-300">
                 <thead>
                   <tr className="bg-gray-100 border-b border-gray-300 font-bold text-gray-900 uppercase">
                     <th className="py-2.5 px-3 w-10 text-center">#</th>
@@ -415,7 +425,7 @@ export default function DeliverySheetPage() {
           </div>
 
           {/* SIGNATURE BLOCKS FOR PHARMACIST & DELIVERY EXECUTIVE */}
-          <div className="pt-6 grid grid-cols-2 gap-8 text-xs text-gray-800">
+          <div className="pt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 text-xs text-gray-800">
             <div className="border-t border-gray-400 pt-2 text-center">
               <p className="font-bold text-gray-900">Dispensed &amp; Verified By (Registered Pharmacist)</p>
               <p className="text-[10px] text-gray-500">Sign &amp; Pharmacy Stamp</p>

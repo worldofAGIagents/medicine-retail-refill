@@ -113,22 +113,22 @@ export default function ImportPage() {
       <div className="p-2 md:p-4 max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-gray-900">MARG ERP Data Synchronization</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">MARG ERP Data Synchronization</h1>
+            <p className="text-xs sm:text-sm text-gray-500">
               Extract inventory, pack sizes (10/15 tabs/strip), and chronic patient orders from MARG
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <button
               onClick={() => loadSampleCSV('medicines')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-xl text-xs font-semibold border border-teal-200 transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-xl text-xs font-semibold border border-teal-200 transition-colors text-center"
             >
               <Sparkles size={14} /> Try Sample Medicines CSV
             </button>
             <button
               onClick={() => loadSampleCSV('sales')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-semibold border border-blue-200 transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-semibold border border-blue-200 transition-colors text-center"
             >
               <Sparkles size={14} /> Try Sample Sales Register CSV
             </button>
@@ -205,10 +205,10 @@ export default function ImportPage() {
 
             {/* Preview & Mapping Table */}
             {file && !success && (
-              <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+              <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-gray-100">
                   <div className="flex items-center gap-2">
-                    <FileText size={18} className="text-teal-600" />
+                    <FileText size={18} className="text-teal-600 shrink-0" />
                     <div>
                       <h3 className="font-bold text-sm text-gray-900">{file.name}</h3>
                       <p className="text-xs text-gray-500">{csvData.length} records detected in file</p>
@@ -217,14 +217,14 @@ export default function ImportPage() {
                   <button
                     onClick={handleImport}
                     disabled={importing}
-                    className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2"
+                    className="w-full sm:w-auto justify-center bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 text-center"
                   >
                     {importing ? 'Importing...' : 'Confirm & Ingest Into Database'}
                   </button>
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full min-w-[600px] text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-gray-50 text-gray-600 font-semibold">
                         {headers.slice(0, 6).map((h) => (

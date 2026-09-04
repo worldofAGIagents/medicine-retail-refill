@@ -157,6 +157,45 @@ async function main() {
     });
   }
 
+  console.log('Seeding Default User & Pharmacy Settings...');
+  const bcrypt = await import('bcryptjs');
+  const hashedPassword = await bcrypt.hash('pharmacy123', 10);
+
+  await prisma.user.upsert({
+    where: { email: 'admin@medrefill.in' },
+    update: { password: hashedPassword, name: 'Rajesh Kumar', role: 'pharmacist' },
+    create: {
+      email: 'admin@medrefill.in',
+      password: hashedPassword,
+      name: 'Rajesh Kumar',
+      role: 'pharmacist',
+    },
+  });
+
+  const defaultSettings: Record<string, string> = {
+    pharmacyName: 'MedRefill Chemist & Druggist',
+    dlNumber: 'DL-20B/12345/2022',
+    gstin: '07AAAAA0000A1Z5',
+    phone: '+91 98765 43210',
+    address: 'Shop 14, Main Market, Sector 18, Noida, UP - 201301',
+    margApiUrl: 'https://api.margerp.com/v2',
+    margCompanyCode: 'PHARMA_DELHI_01',
+    margBranchCode: 'HO',
+    margSyncInterval: '6',
+    defaultBufferDays: '3',
+    reminderTime: '09:00',
+    hindiTemplate: 'नमस्ते {{name}} जी, आपकी दवाई {{medicine}} समाप्त होने वाली है। क्या हम फ्री होम डिलीवरी भेज दें? रिप्लाई में YES लिखकर भेजें।',
+    englishTemplate: 'Dear {{name}}, your {{medicine}} supply will finish soon. To get free doorstep delivery, reply YES to confirm.',
+  };
+
+  for (const [key, value] of Object.entries(defaultSettings)) {
+    await prisma.pharmacySetting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value },
+    });
+  }
+
   console.log('Seeding complete!');
 }
 

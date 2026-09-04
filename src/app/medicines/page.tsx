@@ -122,14 +122,14 @@ export default function MedicinesPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-gray-900">Pharmaceutical Inventory & Pack Sizes</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Pharmaceutical Inventory & Pack Sizes</h1>
+            <p className="text-xs sm:text-sm text-gray-500">
               Packaging sizes (tablets/strip, strips/box) and stock levels synced with MARG ERP
             </p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors"
+            className="w-full sm:w-auto justify-center bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors"
           >
             <Plus size={18} /> Add Medicine
           </button>
@@ -153,8 +153,8 @@ export default function MedicinesPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer shrink-0">
               <input
                 type="checkbox"
                 checked={chronicOnly}
@@ -164,7 +164,7 @@ export default function MedicinesPage() {
               <span>Chronic Meds Only</span>
             </label>
 
-            <div className="relative w-full md:w-64">
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={17} />
               <input
                 type="text"
@@ -189,7 +189,7 @@ export default function MedicinesPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse">
+              <table className="w-full min-w-[750px] text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     <th className="py-3.5 px-6">Medicine & Brand</th>
@@ -272,16 +272,16 @@ export default function MedicinesPage() {
         {/* Add Medicine Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="font-bold text-lg text-gray-900 font-heading">Add Medicine & Packaging Info</h3>
+                <h3 className="font-bold text-lg text-gray-900 font-heading">Add Medicine &amp; Packaging Info</h3>
                 <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                   <X size={20} />
                 </button>
               </div>
 
               <form onSubmit={handleAddMedicine} className="space-y-3.5">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Brand Name</label>
                     <input
@@ -306,7 +306,7 @@ export default function MedicinesPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Category / Condition</label>
                     <select
@@ -335,7 +335,7 @@ export default function MedicinesPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Tablets Per Strip</label>
                     <input

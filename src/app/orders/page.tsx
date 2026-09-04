@@ -117,16 +117,16 @@ export default function OrdersPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-gray-900">Doorstep Delivery Orders</h1>
-            <p className="text-sm text-gray-500">Track and dispatch chronic medicine refill deliveries</p>
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Doorstep Delivery Orders</h1>
+            <p className="text-xs sm:text-sm text-gray-500">Track and dispatch chronic medicine refill deliveries</p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
             {['all', 'preparing', 'out_for_delivery', 'delivered'].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors ${
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize whitespace-nowrap transition-colors ${
                   statusFilter === s
                     ? 'bg-teal-700 text-white'
                     : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -150,7 +150,7 @@ export default function OrdersPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse">
+              <table className="w-full min-w-[750px] text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     <th className="py-3.5 px-6">Order ID</th>

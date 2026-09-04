@@ -19,8 +19,14 @@ async function sendSingleWhatsApp(payload: {
     medicineName = 'Medicine',
     daysRemaining = 2,
     refillDate = '',
-    pharmacyName = 'Apollo Lifeline Pharmacy',
+    pharmacyName: initialPharmacyName,
   } = payload;
+
+  let pharmacyName = initialPharmacyName;
+  if (!pharmacyName) {
+    const setting = await db.pharmacySetting.findUnique({ where: { key: 'pharmacyName' } });
+    pharmacyName = setting?.value || 'MedRefill Chemist & Druggist';
+  }
 
   let phone = rawPhone;
   let targetPrescriptionId = prescriptionId;

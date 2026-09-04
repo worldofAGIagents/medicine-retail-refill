@@ -6,7 +6,11 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const recipientEmail = body.to || 'worldofagent@gmail.com';
-    const pharmacyName = body.pharmacyName || 'Apollo Lifeline Pharmacy & Surgical Center';
+    let pharmacyName = body.pharmacyName;
+    if (!pharmacyName) {
+      const setting = await db.pharmacySetting.findUnique({ where: { key: 'pharmacyName' } });
+      pharmacyName = setting?.value || 'MedRefill Chemist & Druggist';
+    }
 
     // Fetch all active prescriptions
     const prescriptions = await db.prescription.findMany({
