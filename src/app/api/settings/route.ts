@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+import { DEFAULT_TEMPLATES } from '@/lib/templates';
+
 export async function GET() {
   try {
     const rows = await db.pharmacySetting.findMany();
     const settings: Record<string, any> = {};
     for (const r of rows) {
-      // Try to parse booleans or numbers if applicable
       if (r.value === 'true') settings[r.key] = true;
       else if (r.value === 'false') settings[r.key] = false;
       else settings[r.key] = r.value;
@@ -28,8 +29,12 @@ export async function GET() {
       reminderTime: settings.reminderTime || '09:00',
       whatsappEnabled: settings.whatsappEnabled ?? true,
       smsFallback: settings.smsFallback ?? true,
-      hindiTemplate: settings.hindiTemplate || 'नमस्ते {{name}} जी, आपकी दवाई {{medicine}} समाप्त होने वाली है। क्या हम फ्री होम डिलीवरी भेज दें? रिप्लाई में YES लिखकर भेजें।',
-      englishTemplate: settings.englishTemplate || 'Dear {{name}}, your {{medicine}} supply will finish soon. To get free doorstep delivery, reply YES to confirm.',
+      preferredLanguage: settings.preferredLanguage || DEFAULT_TEMPLATES.preferredLanguage,
+      hindiTemplate: settings.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate,
+      englishTemplate: settings.englishTemplate || DEFAULT_TEMPLATES.englishTemplate,
+      infantMilkTemplate: settings.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate,
+      overdueTemplate: settings.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
+      outForDeliveryTemplate: settings.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
     };
 
     return NextResponse.json(defaults);

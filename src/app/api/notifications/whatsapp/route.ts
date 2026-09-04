@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
 
+// Helper function to send single WhatsApp reminder
 async function sendSingleWhatsApp(payload: {
   prescriptionId?: string;
   customerId?: string;
   phone?: string;
   customerName?: string;
   medicineName?: string;
+  category?: string;
   daysRemaining?: number;
   refillDate?: string;
   pharmacyName?: string;
+  customMessage?: string;
 }) {
   const {
     prescriptionId,
@@ -17,28 +21,43 @@ async function sendSingleWhatsApp(payload: {
     phone: rawPhone,
     customerName = 'Valued Customer',
     medicineName = 'Medicine',
+    category,
     daysRemaining = 2,
     refillDate = '',
     pharmacyName: initialPharmacyName,
+    customMessage,
   } = payload;
 
-  let pharmacyName = initialPharmacyName;
-  if (!pharmacyName) {
-    const setting = await db.pharmacySetting.findUnique({ where: { key: 'pharmacyName' } });
-    pharmacyName = setting?.value || 'MedRefill Chemist & Druggist';
+  // 1. Fetch pharmacy settings from database
+  const settingRows = await db.pharmacySetting.findMany();
+  const settings: Record<string, string> = {};
+  for (const r of settingRows) {
+    settings[r.key] = r.value;
   }
+
+  const pharmacyName = initialPharmacyName || settings.pharmacyName || 'MedRefill Chemist & Druggist';
+  const pharmacyPhone = settings.phone || '';
+  const preferredLang = settings.preferredLanguage || 'hindi';
+  const hindiTemplate = settings.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate;
+  const englishTemplate = settings.englishTemplate || DEFAULT_TEMPLATES.englishTemplate;
+  const infantMilkTemplate = settings.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate;
+  const overdueTemplate = settings.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate;
 
   let phone = rawPhone;
   let targetPrescriptionId = prescriptionId;
+  let isInfantMilk = category === 'Infant Milk';
 
-  if (!phone && prescriptionId) {
+  if ((!phone || !isInfantMilk) && prescriptionId) {
     const p = await db.prescription.findUnique({
       where: { id: prescriptionId },
       include: { customer: true, medicine: true },
     });
-    if (p?.customer) {
+    if (p?.customer && !phone) {
       phone = p.customer.phone;
       targetPrescriptionId = p.id;
+    }
+    if (p?.medicine?.category === 'Infant Milk') {
+      isInfantMilk = true;
     }
   }
 
@@ -54,12 +73,24 @@ async function sendSingleWhatsApp(payload: {
   // Clean phone number: remove spaces, symbols, ensure 91 country code
   const cleanDigits = String(phone).replace(/[^0-9]/g, '');
   const formattedPhone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+  const formattedRefillDate = refillDate ? new Date(refillDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '2-3 days';
 
-  const formattedRefillDate = refillDate ? new Date(refillDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '2-3 दिनों में';
-  
-  const message = daysRemaining <= 0
-    ? `नमस्ते ${customerName} जी, आपकी दवाई ${medicineName} समाप्त हो चुकी है (${formattedRefillDate})। स्वास्थ्य बनाए रखने के लिए क्या हम आज ही फ्री होम डिलीवरी भेज दें? रिप्लाई में YES लिखकर भेजें।\n\n- ${pharmacyName}`
-    : `नमस्ते ${customerName} जी, आपकी दवाई ${medicineName} ${daysRemaining} दिन में समाप्त होने वाली है (${formattedRefillDate})। खत्म होने से पहले घर बैठे डिलीवरी पाने के लिए कृपया YES लिखकर जवाब दें।\n\n- ${pharmacyName}`;
+  // Choose template based on category, urgency, and language preference
+  let chosenTemplate = preferredLang === 'english' ? englishTemplate : hindiTemplate;
+  if (isInfantMilk) {
+    chosenTemplate = infantMilkTemplate;
+  } else if (daysRemaining <= 0) {
+    chosenTemplate = overdueTemplate;
+  }
+
+  const message = customMessage || renderTemplate(chosenTemplate, {
+    name: customerName,
+    medicine: medicineName,
+    days: daysRemaining <= 0 ? 'समाप्त' : `${daysRemaining} दिन`,
+    date: formattedRefillDate,
+    pharmacy: pharmacyName,
+    phone: pharmacyPhone,
+  });
 
   const encodedMessage = encodeURIComponent(message);
   const waMeUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
@@ -99,25 +130,27 @@ async function sendSingleWhatsApp(payload: {
     }
   }
 
-  // Log in RefillLog
+  // Log in RefillLog if connected to prescription
   if (targetPrescriptionId) {
-    await db.refillLog.create({
-      data: {
-        prescriptionId: targetPrescriptionId,
-        reminderSentAt: new Date(),
-        reminderChannel: 'whatsapp',
-        status: 'reminded',
-      },
-    });
+    try {
+      await db.refillLog.create({
+        data: {
+          prescriptionId: targetPrescriptionId,
+          reminderChannel: 'whatsapp',
+          status: apiSent ? 'reminded' : 'pending',
+          reminderSentAt: new Date(),
+        },
+      });
+    } catch (e) {
+      console.error('Failed to write refill log:', e);
+    }
   }
 
   return {
     success: true,
-    waMeUrl,
     phone: formattedPhone,
-    customerName,
-    medicineName,
     message,
+    waMeUrl,
     apiSent,
     apiError,
   };
@@ -127,7 +160,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // Check if batch dispatch
+    // 1. Batch Dispatch Mode
     if (Array.isArray(body.items)) {
       const results = [];
       for (const item of body.items) {
@@ -136,20 +169,25 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({
         success: true,
-        isBatch: true,
+        batch: true,
         total: results.length,
-        items: results,
+        results,
       });
     }
 
-    // Single dispatch
+    // 2. Single Notification Mode
     const result = await sendSingleWhatsApp(body);
+
     if (result.error) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error('WhatsApp dispatch error:', error);
-    return NextResponse.json({ error: error.message || 'Error processing WhatsApp reminder' }, { status: 500 });
+    console.error('WhatsApp API error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

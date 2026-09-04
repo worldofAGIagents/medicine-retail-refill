@@ -2,7 +2,9 @@
 
 import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect } from 'react';
-import { Package, Eye, MapPin, CheckCircle, Clock, Truck, XCircle, Search } from 'lucide-react';
+import { Package, Eye, MapPin, CheckCircle, Clock, Truck, XCircle, Search, MessageCircle } from 'lucide-react';
+import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
+
 
 interface OrderItem {
   id: string;
@@ -34,6 +36,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [settings, setSettings] = useState<any>(null);
 
   const loadOrders = () => {
     setLoading(true);
@@ -44,11 +47,38 @@ export default function OrdersPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    fetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) setSettings(data);
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
     loadOrders();
   }, []);
+
+  const handleSendWhatsAppDispatch = (order: Order) => {
+    const medNames = order.items?.map((i) => `${i.medicineName} (${i.quantity})`).join(', ') || 'Prescription Order';
+    const cleanDigits = (order.customer?.phone || '').replace(/[^0-9]/g, '');
+    const phone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+
+    const template = settings?.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate;
+    const message = renderTemplate(template, {
+      name: order.customer?.name || 'Valued Customer',
+      medicine: medNames,
+      days: 'Dispatched',
+      date: 'Today',
+      pharmacy: settings?.pharmacyName || 'MedRefill Chemist',
+      phone: settings?.phone || '',
+      address: order.deliveryAddress || '',
+    });
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
@@ -159,7 +189,7 @@ export default function OrdersPage() {
                     <th className="py-3.5 px-4">Medicines & Qty</th>
                     <th className="py-3.5 px-4">Total Value</th>
                     <th className="py-3.5 px-4">Status</th>
-                    <th className="py-3.5 px-4 text-right">Update Status</th>
+                    <th className="py-3.5 px-4 text-right">Actions &amp; Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -201,17 +231,29 @@ export default function OrdersPage() {
                           {getStatusBadge(o.status)}
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <select
-                            value={o.status}
-                            onChange={(e) => handleStatusChange(o.id, e.target.value)}
-                            className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 outline-none focus:ring-1 focus:ring-teal-500 cursor-pointer"
-                          >
-                            <option value="preparing">Preparing</option>
-                            <option value="ready">Ready</option>
-                            <option value="out_for_delivery">Out for Delivery</option>
-                            <option value="delivered">Delivered</option>
-                            <option value="cancelled">Cancelled</option>
-                          </select>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSendWhatsAppDispatch(o)}
+                              title="Send WhatsApp Out for Delivery Alert to Customer"
+                              className="px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">WhatsApp</span>
+                            </button>
+
+                            <select
+                              value={o.status}
+                              onChange={(e) => handleStatusChange(o.id, e.target.value)}
+                              className="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 outline-none focus:ring-1 focus:ring-teal-500 cursor-pointer"
+                            >
+                              <option value="preparing">Preparing</option>
+                              <option value="ready">Ready</option>
+                              <option value="out_for_delivery">Out for Delivery</option>
+                              <option value="delivered">Delivered</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </div>
                         </td>
                       </tr>
                     );

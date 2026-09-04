@@ -8,6 +8,8 @@ import {
   MapPin, AlertTriangle, MessageCircle, ExternalLink, Milk, Pill,
   Copy, X, Printer, FastForward, Layers, Send, Play, Pause
 } from 'lucide-react';
+import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
+
 
 interface RefillItem {
   id: string;
@@ -63,6 +65,7 @@ export default function RefillsPage() {
   const [batchMode, setBatchMode] = useState<'cloudApi' | 'webQueue'>('webQueue');
   const [batchCompleteMsg, setBatchCompleteMsg] = useState('');
   const [pharmacyName, setPharmacyName] = useState('MedRefill Chemist & Druggist');
+  const [settings, setSettings] = useState<any>(null);
 
   const loadRefills = () => {
     setLoading(true);
@@ -77,7 +80,10 @@ export default function RefillsPage() {
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.pharmacyName) setPharmacyName(data.pharmacyName);
+        if (data) {
+          setSettings(data);
+          if (data.pharmacyName) setPharmacyName(data.pharmacyName);
+        }
       })
       .catch(() => {});
   };
@@ -117,6 +123,7 @@ export default function RefillsPage() {
           phone: item.customer.phone,
           customerName: item.customer.name,
           medicineName: item.medicine.name,
+          category: item.medicine.category,
           daysRemaining: item.refillCalc.daysRemaining,
           refillDate: item.refillCalc.nextRefillDate,
         }),
@@ -196,6 +203,7 @@ export default function RefillsPage() {
         phone: item.customer.phone,
         customerName: item.customer.name,
         medicineName: item.medicine.name,
+        category: item.medicine.category,
         daysRemaining: item.refillCalc.daysRemaining,
         refillDate: item.refillCalc.nextRefillDate,
       }));
@@ -224,11 +232,37 @@ export default function RefillsPage() {
   const handleNextWebQueue = () => {
     if (batchIndex < batchQueue.length) {
       const current = batchQueue[batchIndex];
-      const encodedMsg = encodeURIComponent(
-        `नमस्ते ${current.customer.name} जी, आपकी दवाई ${current.medicine.name} ${current.refillCalc.daysRemaining <= 0 ? 'समाप्त हो चुकी है' : `${current.refillCalc.daysRemaining} दिन में समाप्त होने वाली है`}। क्या हम फ्री होम डिलीवरी भेज दें? रिप्लाई में YES भेजें। - ${pharmacyName}`
-      );
+      const isMilk = current.medicine.category === 'Infant Milk';
+      const isOverdue = current.refillCalc.daysRemaining <= 0;
+      const preferredLang = settings?.preferredLanguage || 'hindi';
+
+      let template = preferredLang === 'english'
+        ? (settings?.englishTemplate || DEFAULT_TEMPLATES.englishTemplate)
+        : (settings?.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate);
+
+      if (isMilk && (settings?.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate)) {
+        template = settings?.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate;
+      } else if (isOverdue && (settings?.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate)) {
+        template = settings?.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate;
+      }
+
+      const refillDateFormatted = current.refillCalc.nextRefillDate
+        ? new Date(current.refillCalc.nextRefillDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+        : '2-3 days';
+
+      const message = renderTemplate(template || '', {
+        name: current.customer.name,
+        medicine: current.medicine.name,
+        days: isOverdue ? 'समाप्त' : `${current.refillCalc.daysRemaining} दिन`,
+        date: refillDateFormatted,
+        pharmacy: settings?.pharmacyName || pharmacyName,
+        phone: settings?.phone || '',
+        address: current.customer.address || '',
+      });
+
       const cleanDigits = current.customer.phone.replace(/[^0-9]/g, '');
       const phone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+      const encodedMsg = encodeURIComponent(message);
       const url = `https://wa.me/${phone}?text=${encodedMsg}`;
 
       window.open(url, '_blank', 'noopener,noreferrer');

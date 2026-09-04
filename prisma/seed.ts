@@ -172,6 +172,17 @@ async function main() {
     },
   });
 
+  await prisma.user.upsert({
+    where: { email: 'worldofagent@gmail.com' },
+    update: { password: hashedPassword, name: 'Pharmacy Admin', role: 'admin' },
+    create: {
+      email: 'worldofagent@gmail.com',
+      password: hashedPassword,
+      name: 'Pharmacy Admin',
+      role: 'admin',
+    },
+  });
+
   const defaultSettings: Record<string, string> = {
     pharmacyName: 'MedRefill Chemist & Druggist',
     dlNumber: 'DL-20B/12345/2022',

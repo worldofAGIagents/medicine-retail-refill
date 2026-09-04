@@ -10,6 +10,7 @@ const SECRET_KEY = new TextEncoder().encode(
 const PUBLIC_PATHS = [
   '/login',
   '/api/auth/login',
+  '/api/auth/register',
   '/api/auth/logout',
 ];
 
