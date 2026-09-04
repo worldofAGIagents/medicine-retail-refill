@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Medicine {
+  id              String   @id @default(cuid())
+  name            String
+  genericName     String
+  manufacturer    String?
+  category        String   // Diabetes, BP, Thyroid, Cholesterol
+  saltComposition String?
+  packagingType   String   @default("strip") // strip, bottle, tube
+  unitsPerPack    Int      // tablets per strip
+  packsPerBox     Int      @default(1)
+  mrp             Float
+  hsnCode         String?
+  margItemCode    String?  @unique
+  isChronicMed    Boolean  @default(false)
+  currentStock    Int      @default(0)
+  reorderLevel    Int      @default(50)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  prescriptions   Prescription[]
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  name            String
+  phone           String   @unique
+  altPhone        String?
+  email           String?
+  address         String?
+  locality        String?
+  city            String   @default("")
+  whatsappEnabled Boolean  @default(true)
+  consentGiven    Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  prescriptions   Prescription[]
+  orders          Order[]
+}
+
+model Prescription {
+  id              String   @id @default(cuid())
+  customerId      String
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  medicineId      String
+  medicine        Medicine @relation(fields: [medicineId], references: [id])
+  dailyDosage     Int      // tablets per day
+  dosageSchedule  String?  // morning, evening, morning+evening, etc.
+  doctorName      String?
+  startDate       DateTime @default(now())
+  isActive        Boolean  @default(true)
+  lastPurchaseDate DateTime?
+  lastPurchaseQty  Int?    // total tablets bought last time
+  nextRefillDate  DateTime?
+  bufferDays      Int      @default(3)
+  customPackaging String?  // e.g. "15 tablets/strip" or "400g Tin"
+  unitType        String?  @default("tablets") // tablets, grams, capsules, ml
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  refillLogs      RefillLog[]
+}
+
+model RefillLog {
+  id              String   @id @default(cuid())
+  prescriptionId  String
+  prescription    Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  reminderSentAt  DateTime?
+  reminderChannel String?  // whatsapp, sms, call
+  customerResponse String? // confirmed, postponed, cancelled
+  deliveredAt     DateTime?
+  quantity        Int?
+  status          String   @default("pending") // pending, reminded, confirmed, delivered, skipped
+  createdAt       DateTime @default(now())
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  customerId      String
+  customer        Customer @relation(fields: [customerId], references: [id])
+  totalAmount     Float    @default(0)
+  status          String   @default("preparing") // preparing, ready, out_for_delivery, delivered, cancelled
+  deliveryAddress String?
+  deliveryDate    DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  medicineName    String
+  medicineId      String?
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+}

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>New Prescription - MedRefill</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#0D9488",
+                        "on-primary": "#FFFFFF",
+                        "primary-container": "#ccfbf1",
+                        "on-primary-container": "#115e59",
+                        secondary: "#2563EB",
+                        "secondary-container": "#dbeafe",
+                        "on-secondary-container": "#1e40af",
+                        tertiary: "#F59E0B",
+                        error: "#EF4444",
+                        success: "#22C55E",
+                        surface: "#FFFFFF",
+                        "surface-container": "#F8FAFC",
+                        "surface-container-high": "#f1f5f9",
+                        "on-surface": "#0f172a",
+                        "on-surface-variant": "#64748b",
+                        "outline-variant": "#e2e8f0"
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                        lg: "1rem",
+                        xl: "1.5rem",
+                        full: "9999px"
+                    },
+                    fontFamily: {
+                        headline: ["Plus Jakarta Sans", "sans-serif"],
+                        display: ["Plus Jakarta Sans", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                        label: ["Public Sans", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface-container text-on-surface font-body antialiased min-h-screen">
+<!-- SideNavBar -->
+<nav class="bg-[#0F766E] dark:bg-surface-container text-white dark:text-primary font-body text-label-md fixed left-0 top-0 h-full w-64 shadow-xl flex flex-col h-full py-4 z-20 hidden md:flex">
+<div class="px-6 mb-8 flex items-center gap-3">
+<span class="material-symbols-outlined text-3xl">medication</span>
+<div>
+<h1 class="text-xl font-headline font-bold text-white dark:text-primary">MedRefill</h1>
+<p class="text-xs text-teal-100/70">Pharmacy Manager</p>
+</div>
+</div>
+<ul class="flex flex-col gap-1 flex-1 px-2">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                    Dashboard
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+                    Customers
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="pill">pill</span>
+                    Medicines
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 bg-[#0D9488] text-white rounded-lg mx-2 transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+                    Prescriptions
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="event_repeat">event_repeat</span>
+                    Refills
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+                    Orders
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="upload_file">upload_file</span>
+                    Import Data
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                    Settings
+                </a>
+</li>
+</ul>
+<div class="mt-auto px-4 border-t border-white/10 pt-4 mx-2">
+<a class="flex items-center gap-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg transition-colors transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+                Rajesh Kumar
+            </a>
+</div>
+</nav>
+<!-- Content Wrapper -->
+<div class="md:ml-64 flex flex-col min-h-screen">
+<!-- TopNavBar -->
+<header class="bg-surface dark:bg-surface-container-high text-primary dark:text-inverse-primary font-body text-body-md border-b border-outline-variant shadow-sm flex justify-between items-center h-16 px-6 sticky top-0 z-10 transition-all duration-200">
+<div class="flex-1 flex items-center gap-4">
+<div class="hidden">MedRefill</div>
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container rounded-full border-transparent focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm" placeholder="Search..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-medium text-on-surface hidden sm:block">Welcome back, Rajesh 👋</span>
+<button class="p-2 text-on-surface-variant hover:bg-surface-variant/50 rounded-full transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-variant/50 rounded-full transition-all">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex-1 p-6 md:p-8">
+<div class="max-w-[800px] mx-auto bg-surface rounded-xl shadow-sm border border-outline-variant/50 overflow-hidden">
+<!-- Form Header -->
+<div class="px-8 py-6 border-b border-outline-variant/50">
+<h2 class="text-2xl font-headline font-bold text-on-surface">New Prescription</h2>
+<p class="text-on-surface-variant mt-1">Add chronic medicine prescription for auto-refill tracking</p>
+</div>
+<div class="p-8 space-y-10">
+<!-- Section 1: Customer -->
+<section>
+<div class="flex justify-between items-center mb-4">
+<label class="block text-sm font-semibold text-on-surface">1. Customer Details</label>
+<button class="text-primary text-sm font-medium hover:underline flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">add</span> Add New Customer
+                            </button>
+</div>
+<!-- Search/Dropdown (Simulated Selected State) -->
+<div class="relative mb-3 hidden">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-10 pr-4 py-2.5 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" placeholder="e.g. Amit Kumar" type="text"/>
+</div>
+<!-- Selected Customer Card -->
+<div class="p-4 rounded-lg border border-primary/20 bg-primary/5 flex items-start justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold font-headline">AK</div>
+<div>
+<h4 class="font-semibold text-on-surface">Amit Kumar</h4>
+<p class="text-sm text-on-surface-variant mt-0.5">9876543210 • Sector 44, Gurgaon</p>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-error transition-colors p-1">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+</section>
+<!-- Section 2: Medicine -->
+<section>
+<label class="block text-sm font-semibold text-on-surface mb-4">2. Medicine Details</label>
+<!-- Selected Medicine Card -->
+<div class="p-4 rounded-lg border border-primary/20 bg-primary/5 flex items-start justify-between">
+<div class="flex gap-4">
+<div class="w-10 h-10 rounded-lg bg-white border border-primary/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">medication</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h4 class="font-semibold text-on-surface">Metformin 500mg</h4>
+<span class="text-xs text-on-surface-variant">(Glycomet)</span>
+<span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-secondary/10 text-secondary rounded-full">Diabetes</span>
+</div>
+<p class="text-sm text-on-surface-variant mt-1">Strip of 10 tablets</p>
+</div>
+</div>
+<button class="text-on-surface-variant hover:text-error transition-colors p-1">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+</section>
+<!-- Section 3: Dosage -->
+<section class="p-5 rounded-xl border border-outline-variant bg-surface-container-high/30">
+<label class="block text-sm font-semibold text-on-surface mb-4">3. Daily Dosage</label>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+<label class="cursor-pointer">
+<input class="peer sr-only" name="dosage" type="radio"/>
+<div class="px-4 py-2.5 rounded-lg border border-outline-variant text-center text-sm font-medium text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all hover:bg-surface-container">
+                                    1 tablet/day
+                                </div>
+</label>
+<label class="cursor-pointer">
+<input checked="" class="peer sr-only" name="dosage" type="radio"/>
+<div class="px-4 py-2.5 rounded-lg border border-outline-variant text-center text-sm font-medium text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all hover:bg-surface-container">
+                                    2 tablets/day
+                                </div>
+</label>
+<label class="cursor-pointer">
+<input class="peer sr-only" name="dosage" type="radio"/>
+<div class="px-4 py-2.5 rounded-lg border border-outline-variant text-center text-sm font-medium text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all hover:bg-surface-container">
+                                    3 tablets/day
+                                </div>
+</label>
+<label class="cursor-pointer">
+<input class="peer sr-only" name="dosage" type="radio"/>
+<div class="px-4 py-2.5 rounded-lg border border-outline-variant text-center text-sm font-medium text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all hover:bg-surface-container">
+                                    Custom
+                                </div>
+</label>
+</div>
+<div class="mb-2">
+<span class="text-xs font-medium text-on-surface-variant block mb-2 uppercase tracking-wider">Schedule</span>
+<div class="flex flex-wrap gap-2">
+<label class="cursor-pointer">
+<input checked="" class="peer sr-only" type="checkbox"/>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-all">
+<span class="material-symbols-outlined text-[16px]">wb_twilight</span> Morning
+                                    </div>
+</label>
+<label class="cursor-pointer">
+<input class="peer sr-only" type="checkbox"/>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-all">
+<span class="material-symbols-outlined text-[16px]">light_mode</span> Afternoon
+                                    </div>
+</label>
+<label class="cursor-pointer">
+<input class="peer sr-only" type="checkbox"/>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-all">
+<span class="material-symbols-outlined text-[16px]">wb_sunny</span> Evening
+                                    </div>
+</label>
+<label class="cursor-pointer">
+<input checked="" class="peer sr-only" type="checkbox"/>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-all">
+<span class="material-symbols-outlined text-[16px]">dark_mode</span> Night
+                                    </div>
+</label>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant mt-3 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px]">info</span>
+                            This determines when refill reminders are sent
+                        </p>
+</section>
+<!-- Section 4: Purchase -->
+<section>
+<label class="block text-sm font-semibold text-on-surface mb-4">4. Purchase Details</label>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+<div>
+<label class="block text-xs font-medium text-on-surface-variant mb-1.5">Last Purchase Date</label>
+<div class="relative">
+<input class="w-full px-3 py-2.5 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm" type="date" value="2023-08-25"/>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-on-surface-variant mb-1.5">Quantity Purchased (tablets)</label>
+<input class="w-full px-3 py-2.5 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm font-medium" type="number" value="30"/>
+</div>
+</div>
+<div class="mb-4">
+<span class="text-xs font-medium text-on-surface-variant block mb-2">Quick Selection</span>
+<div class="flex flex-wrap gap-2">
+<button class="px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant hover:bg-surface-container transition-all" type="button">1 Strip (10)</button>
+<button class="px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant hover:bg-surface-container transition-all" type="button">2 Strips (20)</button>
+<button class="px-3 py-1.5 rounded-full border border-primary bg-primary/10 text-primary font-medium transition-all" type="button">3 Strips (30)</button>
+<button class="px-3 py-1.5 rounded-full border border-outline-variant text-sm text-on-surface-variant hover:bg-surface-container transition-all" type="button">1 Box (100)</button>
+</div>
+</div>
+<div class="text-sm text-secondary font-medium bg-secondary/5 p-3 rounded-lg border border-secondary/10 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">calculate</span>
+                            Purchased 3 strips × 10 tablets = 30 tablets total
+                        </div>
+</section>
+<!-- Section 5: Preview Box -->
+<section class="bg-gradient-to-br from-primary-container to-[#bbf7d0]/30 rounded-xl p-6 border border-primary/20 relative overflow-hidden">
+<!-- Decorative bg -->
+<div class="absolute -right-6 -top-6 text-primary/10 rotate-12 pointer-events-none">
+<span class="material-symbols-outlined text-[120px]">calendar_month</span>
+</div>
+<div class="relative z-10 flex flex-col md:flex-row gap-6 items-start">
+<div class="flex-1">
+<h3 class="text-lg font-headline font-bold text-on-primary-container mb-1">Refill Calculation Preview</h3>
+<p class="text-sm text-on-primary-container/80 mb-5">30 tablets ÷ 2 per day = <span class="font-bold">15 days</span> of supply</p>
+<div class="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/40 mb-4 flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-primary text-white flex flex-col items-center justify-center shadow-sm">
+<span class="text-[10px] font-bold uppercase tracking-wider opacity-80">Sep</span>
+<span class="text-lg font-bold leading-none">15</span>
+</div>
+<div>
+<p class="text-sm text-on-surface-variant">Estimated Refill Date</p>
+<p class="text-lg font-headline font-bold text-primary">September 15, 2026</p>
+</div>
+</div>
+<p class="text-sm font-medium text-tertiary flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">notifications_active</span>
+                                    Reminder will be sent on: September 12, 2026
+                                </p>
+</div>
+<div class="w-full md:w-48 bg-white/60 backdrop-blur-sm p-4 rounded-lg border border-white/40">
+<label class="block text-xs font-semibold text-on-surface-variant mb-2">Buffer Days</label>
+<p class="text-[10px] text-on-surface-variant/80 mb-3 leading-tight">Days before running out to send reminder</p>
+<div class="flex items-center">
+<button class="w-8 h-8 rounded-l-md border border-outline-variant bg-surface flex items-center justify-center text-on-surface-variant hover:bg-surface-container"><span class="material-symbols-outlined text-[16px]">remove</span></button>
+<input class="w-12 h-8 border-y border-outline-variant text-center text-sm font-medium outline-none" type="text" value="3"/>
+<button class="w-8 h-8 rounded-r-md border border-outline-variant bg-surface flex items-center justify-center text-on-surface-variant hover:bg-surface-container"><span class="material-symbols-outlined text-[16px]">add</span></button>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 6: Additional -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div>
+<label class="block text-sm font-semibold text-on-surface mb-2">Doctor Name (Optional)</label>
+<input class="w-full px-3 py-2.5 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm" placeholder="Dr. Name" type="text"/>
+</div>
+<div>
+<label class="block text-sm font-semibold text-on-surface mb-2">Notes (Optional)</label>
+<textarea class="w-full px-3 py-2.5 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm resize-none" placeholder="Any specific instructions..." rows="2"></textarea>
+</div>
+</section>
+</div>
+<!-- Form Actions -->
+<div class="px-8 py-5 bg-surface-container-high/50 border-t border-outline-variant/50 flex flex-col-reverse sm:flex-row justify-end items-center gap-3">
+<button class="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors" type="button">
+                        Cancel
+                    </button>
+<button class="w-full sm:w-auto px-5 py-2.5 text-sm font-medium text-primary border border-primary rounded-lg hover:bg-primary/5 transition-colors" type="button">
+                        Save &amp; Add Another
+                    </button>
+<button class="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-white bg-primary rounded-lg shadow-sm hover:bg-primary/90 transition-colors shadow-[0_2px_10px_rgba(13,148,136,0.3)]" type="button">
+                        Save Prescription
+                    </button>
+</div>
+</div>
+</main>
+</div>
+</body></html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Customer List - MedRefill Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: "#0D9488",
+                            container: "#CCFBF1",
+                        },
+                        secondary: {
+                            DEFAULT: "#2563EB",
+                            container: "#DBEAFE",
+                        },
+                        tertiary: {
+                            DEFAULT: "#F59E0B",
+                            container: "#FEF3C7",
+                        },
+                        error: {
+                            DEFAULT: "#EF4444",
+                            container: "#FEE2E2",
+                        },
+                        success: {
+                            DEFAULT: "#22C55E",
+                            container: "#DCFCE7",
+                        },
+                        surface: {
+                            DEFAULT: "#FFFFFF",
+                            container: "#F8FAFC",
+                            "container-high": "#F1F5F9",
+                        },
+                        "on-surface": {
+                            DEFAULT: "#0F172A",
+                            variant: "#64748B",
+                        },
+                        outline: {
+                            DEFAULT: "#CBD5E1",
+                            variant: "#E2E8F0",
+                        }
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                        lg: "1rem",
+                        xl: "1.5rem",
+                        full: "9999px"
+                    },
+                    fontFamily: {
+                        headline: ["Plus Jakarta Sans", "sans-serif"],
+                        display: ["Plus Jakarta Sans", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                        label: ["Public Sans", "sans-serif"]
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; }
+        h1, h2, h3, h4, h5, h6, .font-headline { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface-container text-on-surface flex min-h-screen">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-[#0F766E] flex flex-col h-full py-4 shadow-xl z-20 transition-all duration-300 md:translate-x-0 -translate-x-full" id="sidebar">
+<div class="px-6 mb-8 flex items-center space-x-3">
+<div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-primary font-bold text-xl">
+<span class="material-symbols-outlined" data-icon="local_pharmacy">local_pharmacy</span>
+</div>
+<div>
+<h2 class="text-xl font-headline font-bold text-white">MedRefill</h2>
+<p class="text-xs text-teal-100 font-label">Pharmacy Manager</p>
+</div>
+</div>
+<nav class="flex-1 overflow-y-auto font-body text-label-md px-2 space-y-1">
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 bg-[#0D9488] text-white rounded-lg mx-2 transition-all duration-200 active:scale-95 shadow-md" href="#">
+<span class="material-symbols-outlined" data-icon="group" style="font-variation-settings: 'FILL' 1;">group</span>
+<span class="font-semibold">Customers</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="pill">pill</span>
+<span>Medicines</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span>Prescriptions</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="event_repeat">event_repeat</span>
+<span>Refills</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+<span>Orders</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="upload_file">upload_file</span>
+<span>Import Data</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors mt-8" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="px-4 mt-auto">
+<div class="flex items-center space-x-3 px-4 py-3 text-teal-50 hover:bg-white/10 rounded-lg transition-colors cursor-pointer border border-teal-600/50">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="font-body text-sm font-medium">Rajesh Kumar</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col min-h-screen md:ml-64 w-full">
+<!-- TopNavBar -->
+<header class="bg-surface docked full-width top-0 border-b border-outline-variant shadow-sm flex justify-between items-center h-16 px-6 z-10 sticky">
+<div class="flex items-center">
+<button class="md:hidden mr-4 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<div class="relative w-64 md:w-96 hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-high border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 transition-all font-body text-on-surface placeholder:text-on-surface-variant" placeholder="Search customers, medicines..." type="text"/>
+</div>
+</div>
+<div class="flex items-center space-x-6">
+<div class="hidden md:block text-sm font-body font-medium text-on-surface-variant">
+                    Welcome back, Rajesh 👋
+                </div>
+<div class="flex items-center space-x-3">
+<button class="relative p-2 text-on-surface-variant hover:bg-surface-variant/50 rounded-full transition-all duration-200">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-error rounded-full border-2 border-surface"></span>
+</button>
+<button class="p-1 rounded-full border-2 border-primary/20 hover:border-primary transition-colors">
+<img alt="Rajesh Kumar" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBir0OPsTtQa1xWp4kZFQwaG1l1eojrsSWqwzifjEG08thGC8v1f_jM0MTLlj584YV8EMP7oCX_MsaG0YR4pro9c1MUhZkMqn-LDfDwY_8ch4UDsVqx_54noM9REb34SBVLo5cY7BMKH7HcBcFtHZuvot4vg_8pjfTg-6_M8nNfnglrYUnwkMo0-LugYDynob7BpSw5McxmxHNXjAbeBZ48har35mEm-TA-OXF9CKz-sIPww-OQ_rCuSdDOKKPTzmSSBSs_0aBELIE"/>
+</button>
+</div>
+</div>
+</header>
+<!-- Page Content -->
+<main class="flex-1 p-6 md:p-8 overflow-x-hidden">
+<!-- Header Section -->
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+<div>
+<h1 class="text-3xl font-headline font-bold text-primary tracking-tight">Customers</h1>
+<p class="text-on-surface-variant font-body mt-1 text-sm md:text-base">Manage your chronic medicine customers</p>
+</div>
+<button class="flex items-center space-x-2 bg-primary hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-headline font-semibold text-sm active:scale-95">
+<span class="material-symbols-outlined text-[20px]">add</span>
+<span>Add Customer</span>
+</button>
+</div>
+<!-- Filter Bar -->
+<div class="flex flex-col xl:flex-row gap-4 mb-6 items-start xl:items-center justify-between">
+<div class="flex flex-wrap gap-2">
+<button class="px-4 py-1.5 rounded-full text-sm font-medium bg-primary text-white shadow-sm transition-all">All</button>
+<button class="px-4 py-1.5 rounded-full text-sm font-medium bg-surface text-on-surface-variant border border-outline-variant hover:bg-surface-container hover:text-on-surface transition-all">Diabetes</button>
+<button class="px-4 py-1.5 rounded-full text-sm font-medium bg-surface text-on-surface-variant border border-outline-variant hover:bg-surface-container hover:text-on-surface transition-all">BP</button>
+<button class="px-4 py-1.5 rounded-full text-sm font-medium bg-surface text-on-surface-variant border border-outline-variant hover:bg-surface-container hover:text-on-surface transition-all">Thyroid</button>
+<button class="px-4 py-1.5 rounded-full text-sm font-medium bg-surface text-on-surface-variant border border-outline-variant hover:bg-surface-container hover:text-on-surface transition-all">Cholesterol</button>
+</div>
+<div class="relative w-full xl:w-72 sm:hidden block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface border border-outline-variant rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-body text-on-surface" placeholder="Search customers..." type="text"/>
+</div>
+</div>
+<!-- Customer Table Card -->
+<div class="bg-surface rounded-xl shadow-sm border border-outline-variant overflow-hidden mb-6">
+<div class="overflow-x-auto">
+<table class="w-full text-left font-body whitespace-nowrap">
+<thead>
+<tr class="bg-surface-container-high text-on-surface-variant text-xs uppercase tracking-wider font-semibold border-b border-outline-variant">
+<th class="px-6 py-4 rounded-tl-xl">Customer</th>
+<th class="px-6 py-4">Phone</th>
+<th class="px-6 py-4">Medicines</th>
+<th class="px-6 py-4 text-center">Active Rx</th>
+<th class="px-6 py-4">Next Refill</th>
+<th class="px-6 py-4">Status</th>
+<th class="px-6 py-4 text-right rounded-tr-xl">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant text-sm text-on-surface">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">AK</div>
+<div class="font-semibold text-on-surface">Amit Kumar</div>
+</div>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-mono tabular-nums">9876543210</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-container text-primary border border-primary/20">Metformin 500mg</span>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-container text-primary border border-primary/20">Amlodipine 5mg</span>
+</div>
+</td>
+<td class="px-6 py-4 text-center font-mono tabular-nums">2</td>
+<td class="px-6 py-4 text-on-surface-variant">Sep 5, 2026</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-error-container text-error border border-error/20">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+<span>Needs Refill</span>
+</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex items-center justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary-container rounded-md transition-colors tooltip-trigger" title="View">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+<button class="p-1.5 text-on-surface-variant hover:text-secondary hover:bg-secondary-container rounded-md transition-colors tooltip-trigger" title="Edit">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+<button class="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container rounded-md transition-colors tooltip-trigger" title="Remind">
+<span class="material-symbols-outlined text-[18px]">notifications_active</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-full bg-secondary/10 text-secondary flex items-center justify-center font-bold text-xs shrink-0">PS</div>
+<div class="font-semibold text-on-surface">Priya Sharma</div>
+</div>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-mono tabular-nums">9823456789</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-container text-primary border border-primary/20">Amlodipine 5mg</span>
+</div>
+</td>
+<td class="px-6 py-4 text-center font-mono tabular-nums">1</td>
+<td class="px-6 py-4 text-on-surface-variant">Sep 8, 2026</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-tertiary-container text-tertiary border border-tertiary/20">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+<span>Due Soon</span>
+</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex items-center justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary-container rounded-md transition-colors" title="View">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+<button class="p-1.5 text-on-surface-variant hover:text-secondary hover:bg-secondary-container rounded-md transition-colors" title="Edit">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0">RG</div>
+<div class="font-semibold text-on-surface">Rajesh Gupta</div>
+</div>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-mono tabular-nums">9871234567</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-container text-primary border border-primary/20">Thyronorm 50mcg</span>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-container text-primary border border-primary/20">Ecosprin 75mg</span>
+</div>
+</td>
+<td class="px-6 py-4 text-center font-mono tabular-nums">2</td>
+<td class="px-6 py-4 text-on-surface-variant">Sep 12, 2026</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-success-container text-success-700 border border-success/20">
+<span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+<span>OK</span>
+</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex items-center justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary-container rounded-md transition-colors" title="View">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+<button class="p-1.5 text-on-surface-variant hover:text-secondary hover:bg-secondary-container rounded-md transition-colors" title="Edit">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Rows 4-10 omitted for brevity in this mock, but structure follows above -->
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">SD</div>
+<div class="font-semibold text-on-surface">Sunita Devi</div>
+</div>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-mono tabular-nums">9845678901</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-primary-container text-primary border border-primary/20">Atorvastatin 10mg</span>
+</div>
+</td>
+<td class="px-6 py-4 text-center font-mono tabular-nums">1</td>
+<td class="px-6 py-4 text-on-surface-variant">Sep 4, 2026</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-error-container text-error border border-error/20">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+<span>Needs Refill</span>
+</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex items-center justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary-container rounded-md transition-colors" title="View"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
+<button class="p-1.5 text-on-surface-variant hover:text-secondary hover:bg-secondary-container rounded-md transition-colors" title="Edit"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+<button class="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container rounded-md transition-colors" title="Remind"><span class="material-symbols-outlined text-[18px]">notifications_active</span></button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination Footer -->
+<div class="bg-surface px-6 py-4 border-t border-outline-variant flex flex-col sm:flex-row items-center justify-between gap-4">
+<div class="text-sm text-on-surface-variant font-body">
+                        Showing <span class="font-semibold text-on-surface">1-10</span> of <span class="font-semibold text-on-surface">248</span> customers
+                    </div>
+<nav class="flex items-center space-x-1">
+<button class="px-3 py-1.5 text-sm font-medium text-on-surface-variant bg-surface border border-outline-variant rounded-md hover:bg-surface-container transition-colors disabled:opacity-50" disabled="">Prev</button>
+<button class="w-8 h-8 flex items-center justify-center text-sm font-medium text-white bg-primary rounded-md shadow-sm">1</button>
+<button class="w-8 h-8 flex items-center justify-center text-sm font-medium text-on-surface-variant hover:bg-surface-container rounded-md transition-colors">2</button>
+<button class="w-8 h-8 flex items-center justify-center text-sm font-medium text-on-surface-variant hover:bg-surface-container rounded-md transition-colors">3</button>
+<span class="px-1 text-on-surface-variant">...</span>
+<button class="px-3 py-1.5 text-sm font-medium text-on-surface-variant bg-surface border border-outline-variant rounded-md hover:bg-surface-container transition-colors">Next</button>
+</nav>
+</div>
+</div>
+</main>
+</div>
+</body></html>

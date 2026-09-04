@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Medicines Inventory - MedRefill</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=Public+Sans:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#0D9488', // Teal
+                            container: '#CCFBF1',
+                            on: '#FFFFFF',
+                            'on-container': '#115E59'
+                        },
+                        secondary: {
+                            DEFAULT: '#2563EB', // Blue
+                        },
+                        warning: {
+                            DEFAULT: '#F59E0B', // Amber
+                        },
+                        error: {
+                            DEFAULT: '#EF4444', // Red
+                        },
+                        success: {
+                            DEFAULT: '#22C55E', // Green
+                        },
+                        surface: {
+                            DEFAULT: '#FFFFFF',
+                            container: '#F8FAFC', // Light gray background
+                            'container-high': '#F1F5F9',
+                            variant: '#E2E8F0'
+                        },
+                        'on-surface': {
+                            DEFAULT: '#0F172A',
+                            variant: '#64748B'
+                        },
+                        outline: {
+                            DEFAULT: '#CBD5E1',
+                            variant: '#E2E8F0'
+                        }
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                        lg: "0.75rem", // 12px
+                        xl: "1.5rem",
+                        full: "9999px"
+                    },
+                    fontFamily: {
+                        headline: ["Plus Jakarta Sans", "sans-serif"],
+                        display: ["Plus Jakarta Sans", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                        label: ["Public Sans", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface-container text-on-surface font-body h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-64 bg-[#0F766E] shadow-xl flex flex-col py-4 z-20">
+<div class="px-6 mb-8 flex items-center gap-3 text-white">
+<div class="w-8 h-8 bg-white rounded-md flex items-center justify-center text-primary font-bold text-xl">M</div>
+<div>
+<h1 class="text-xl font-headline font-bold leading-tight">MedRefill</h1>
+<p class="text-[10px] text-teal-100 uppercase tracking-wider font-label">Pharmacy Manager</p>
+</div>
+</div>
+<div class="flex-1 px-2 space-y-1">
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">dashboard</span>
+                Dashboard
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">group</span>
+                Customers
+            </a>
+<a class="bg-[#0D9488] text-white rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-semibold shadow-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">pill</span>
+                Medicines
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">description</span>
+                Prescriptions
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">event_repeat</span>
+                Refills
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">shopping_cart</span>
+                Orders
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">upload_file</span>
+                Import Data
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-all duration-200 active:scale-95 flex items-center gap-3 px-4 py-3 font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+                Settings
+            </a>
+</div>
+<div class="mt-auto px-4">
+<a class="text-teal-50 hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-3 px-4 py-3 font-body text-sm border border-teal-600/50" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">account_circle</span>
+<span class="flex-1 truncate">Rajesh Kumar</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="ml-64 flex-1 flex flex-col h-full w-full">
+<!-- TopNavBar -->
+<header class="bg-surface docked full-width top-0 border-b border-outline-variant shadow-sm flex justify-between items-center h-16 px-6 z-10 sticky top-0 shrink-0">
+<div class="flex-1 flex items-center max-w-md">
+<div class="relative w-full">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container rounded-full border-none focus:ring-2 focus:ring-primary/20 text-sm font-body" placeholder="Search medicines, salts..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant font-body">
+<span class="text-sm font-medium hidden sm:block">Welcome back, Rajesh 👋</span>
+<button class="p-2 rounded-full hover:bg-surface-variant/50 transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full border border-surface"></span>
+</button>
+<button class="p-1 rounded-full hover:bg-surface-variant/50 transition-colors">
+<span class="material-symbols-outlined text-[28px]">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Main Scrollable Area -->
+<main class="flex-1 overflow-y-auto p-6 flex gap-6">
+<!-- Left/Main Column -->
+<div class="flex-1 flex flex-col gap-6 min-w-0">
+<!-- Header Section -->
+<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+<div>
+<h2 class="text-3xl font-headline font-bold text-on-surface tracking-tight">Medicines</h2>
+<p class="text-on-surface-variant mt-1">Inventory &amp; chronic medicine tracking</p>
+</div>
+<div class="flex gap-3">
+<button class="px-4 py-2 border border-outline rounded-lg text-on-surface font-medium text-sm hover:bg-surface-container transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">upload_file</span>
+                            Import from MARG
+                        </button>
+<button class="px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-sm">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                            Add Medicine
+                        </button>
+</div>
+</div>
+<!-- Filters & Controls -->
+<div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-surface p-4 rounded-lg shadow-sm border border-outline/50">
+<div class="flex flex-wrap gap-2">
+<button class="px-4 py-1.5 bg-primary text-white rounded-full text-sm font-medium shadow-sm">All</button>
+<button class="px-4 py-1.5 bg-surface-container text-on-surface hover:bg-surface-variant rounded-full text-sm font-medium transition-colors border border-outline/50">Diabetes</button>
+<button class="px-4 py-1.5 bg-surface-container text-on-surface hover:bg-surface-variant rounded-full text-sm font-medium transition-colors border border-outline/50">Blood Pressure</button>
+<button class="px-4 py-1.5 bg-surface-container text-on-surface hover:bg-surface-variant rounded-full text-sm font-medium transition-colors border border-outline/50">Thyroid</button>
+<button class="px-4 py-1.5 bg-surface-container text-on-surface hover:bg-surface-variant rounded-full text-sm font-medium transition-colors border border-outline/50">Cholesterol</button>
+<button class="px-4 py-1.5 bg-surface-container text-on-surface hover:bg-surface-variant rounded-full text-sm font-medium transition-colors border border-outline/50">Heart</button>
+</div>
+<div class="flex items-center gap-3 border-l border-outline pl-4">
+<label class="text-sm font-medium text-on-surface cursor-pointer select-none flex items-center gap-2">
+<div class="relative">
+<input checked="" class="sr-only" type="checkbox"/>
+<div class="w-10 h-6 bg-primary rounded-full transition-colors"></div>
+<div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform translate-x-4"></div>
+</div>
+                            Show Chronic Only
+                        </label>
+</div>
+</div>
+<!-- Medicines Table Card -->
+<div class="bg-surface rounded-lg shadow-sm border border-outline/50 overflow-hidden flex flex-col flex-1">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse min-w-[900px]">
+<thead>
+<tr class="border-b border-outline/50 bg-surface-container-high/50 text-on-surface-variant text-xs font-semibold uppercase tracking-wider font-label">
+<th class="p-4 py-3">Medicine Name</th>
+<th class="p-4 py-3">Generic/Salt</th>
+<th class="p-4 py-3">Category</th>
+<th class="p-4 py-3">Pack Size</th>
+<th class="p-4 py-3 text-right">MRP</th>
+<th class="p-4 py-3 text-right">Stock</th>
+<th class="p-4 py-3">Status</th>
+<th class="p-4 py-3 text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="text-sm divide-y divide-outline/30">
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Glycomet 500mg</td>
+<td class="p-4 text-on-surface-variant">Metformin</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Diabetes</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹45</td>
+<td class="p-4 text-right font-mono text-on-surface">340</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Glycomet 850mg</td>
+<td class="p-4 text-on-surface-variant">Metformin</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Diabetes</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹82</td>
+<td class="p-4 text-right font-mono text-on-surface">120</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group bg-warning/5">
+<td class="p-4 font-medium text-on-surface">Amaryl 2mg</td>
+<td class="p-4 text-on-surface-variant">Glimepiride</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Diabetes</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹95</td>
+<td class="p-4 text-right font-mono text-warning font-semibold">25</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-warning"><span class="material-symbols-outlined text-[16px]">warning</span> <span class="font-medium">Low Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-warning hover:text-warning/80 font-medium text-sm border border-warning/30 px-2 py-1 rounded bg-white">Reorder</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Amlokind 5mg</td>
+<td class="p-4 text-on-surface-variant">Amlodipine</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">BP</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹32</td>
+<td class="p-4 text-right font-mono text-on-surface">500</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Telma 40mg</td>
+<td class="p-4 text-on-surface-variant">Telmisartan</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">BP</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹110</td>
+<td class="p-4 text-right font-mono text-on-surface">200</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group bg-error/5">
+<td class="p-4 font-medium text-on-surface">Losar 50mg</td>
+<td class="p-4 text-on-surface-variant">Losartan</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">BP</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹58</td>
+<td class="p-4 text-right font-mono text-error font-bold">15</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-error"><span class="material-symbols-outlined text-[16px]">error</span> <span class="font-medium">Critical</span></div></td>
+<td class="p-4 text-right"><button class="text-white bg-error hover:bg-error/90 font-medium text-xs px-2.5 py-1 rounded shadow-sm">Urgent Reorder</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Atorva 10mg</td>
+<td class="p-4 text-on-surface-variant">Atorvastatin</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">Cholesterol</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹75</td>
+<td class="p-4 text-right font-mono text-on-surface">180</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Rozavel 10mg</td>
+<td class="p-4 text-on-surface-variant">Rosuvastatin</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">Cholesterol</span></td>
+<td class="p-4 text-on-surface-variant">10 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹155</td>
+<td class="p-4 text-right font-mono text-on-surface">90</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Thyronorm 50mcg</td>
+<td class="p-4 text-on-surface-variant">Levothyroxine</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Thyroid</span></td>
+<td class="p-4 text-on-surface-variant">100 tabs/bottle</td>
+<td class="p-4 text-right font-mono text-on-surface">₹125</td>
+<td class="p-4 text-right font-mono text-on-surface">400</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group bg-error/5">
+<td class="p-4 font-medium text-on-surface">Thyronorm 75mcg</td>
+<td class="p-4 text-on-surface-variant">Levothyroxine</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Thyroid</span></td>
+<td class="p-4 text-on-surface-variant">100 tabs/bottle</td>
+<td class="p-4 text-right font-mono text-on-surface">₹135</td>
+<td class="p-4 text-right font-mono text-error font-bold">0</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-error"><span class="material-symbols-outlined text-[16px]">cancel</span> <span class="font-medium">Out of Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-white bg-error hover:bg-error/90 font-medium text-xs px-2.5 py-1 rounded shadow-sm">Urgent Reorder</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group">
+<td class="p-4 font-medium text-on-surface">Ecosprin 75mg</td>
+<td class="p-4 text-on-surface-variant">Aspirin</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Heart</span></td>
+<td class="p-4 text-on-surface-variant">14 tabs/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹18</td>
+<td class="p-4 text-right font-mono text-on-surface">560</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-success"><span class="material-symbols-outlined text-[16px]">check_circle</span> <span class="font-medium">In Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-primary hover:text-primary/80 font-medium text-sm">Edit</button></td>
+</tr>
+<tr class="hover:bg-surface-container/50 transition-colors group bg-warning/5">
+<td class="p-4 font-medium text-on-surface">Pan-D 40mg</td>
+<td class="p-4 text-on-surface-variant">Pantoprazole</td>
+<td class="p-4"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Gastric</span></td>
+<td class="p-4 text-on-surface-variant">10 caps/strip</td>
+<td class="p-4 text-right font-mono text-on-surface">₹65</td>
+<td class="p-4 text-right font-mono text-warning font-semibold">8</td>
+<td class="p-4"><div class="flex items-center gap-1.5 text-warning"><span class="material-symbols-outlined text-[16px]">warning</span> <span class="font-medium">Low Stock</span></div></td>
+<td class="p-4 text-right"><button class="text-warning hover:text-warning/80 font-medium text-sm border border-warning/30 px-2 py-1 rounded bg-white">Reorder</button></td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Footer Pagination -->
+<div class="mt-auto border-t border-outline/50 p-4 flex items-center justify-between bg-surface-container-high/30">
+<span class="text-sm text-on-surface-variant">Showing 12 of 45 medicines</span>
+<div class="flex items-center gap-1">
+<button class="px-3 py-1.5 border border-outline rounded text-sm font-medium text-on-surface-variant hover:bg-surface disabled:opacity-50" disabled="">Prev</button>
+<button class="w-8 h-8 rounded bg-primary text-white text-sm font-medium flex items-center justify-center">1</button>
+<button class="w-8 h-8 rounded border border-outline hover:bg-surface text-on-surface-variant text-sm font-medium flex items-center justify-center">2</button>
+<button class="w-8 h-8 rounded border border-outline hover:bg-surface text-on-surface-variant text-sm font-medium flex items-center justify-center">3</button>
+<button class="px-3 py-1.5 border border-outline rounded text-sm font-medium text-on-surface hover:bg-surface">Next</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Sidebar -->
+<div class="w-72 hidden xl:block flex-shrink-0">
+<div class="bg-surface rounded-lg shadow-sm border border-outline/50 p-5 sticky top-6">
+<h3 class="font-headline font-semibold text-lg text-on-surface mb-6">Stock Summary</h3>
+<!-- CSS Donut Chart Representation -->
+<div class="relative w-40 h-40 mx-auto mb-6">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<!-- Background Circle (Out of stock - Red) -->
+<path class="text-error" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="100, 100" stroke-width="4"></path>
+<!-- Low Stock (Amber) ~9% -->
+<path class="text-warning" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="93, 100" stroke-dashoffset="0" stroke-width="4"></path>
+<!-- In Stock (Green) ~84% -->
+<path class="text-success" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="84, 100" stroke-dashoffset="-9" stroke-width="4"></path>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="text-3xl font-bold font-headline text-on-surface">45</span>
+<span class="text-xs text-on-surface-variant font-medium">Total Items</span>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-success"></div>
+<span class="text-sm font-medium text-on-surface">In Stock</span>
+</div>
+<span class="font-mono font-semibold text-on-surface">38</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-warning"></div>
+<span class="text-sm font-medium text-on-surface">Low Stock</span>
+</div>
+<span class="font-mono font-semibold text-on-surface">4</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-error"></div>
+<span class="text-sm font-medium text-on-surface">Out of Stock</span>
+</div>
+<span class="font-mono font-semibold text-on-surface">3</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

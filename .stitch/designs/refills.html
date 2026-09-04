@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Refill Center - MedRefill</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;family=Public+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: "#0D9488",
+                            container: "#CCFBF1",
+                        },
+                        secondary: "#2563EB",
+                        warning: "#F59E0B",
+                        error: "#EF4444",
+                        success: "#22C55E",
+                        surface: {
+                            DEFAULT: "#FFFFFF",
+                            container: "#F8FAFC",
+                            high: "#F1F5F9",
+                        },
+                        on: {
+                            surface: "#0F172A",
+                            variant: "#475569",
+                        }
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                        lg: "1rem",
+                        xl: "1.5rem",
+                        full: "9999px"
+                    },
+                    fontFamily: {
+                        headline: ["Plus Jakarta Sans", "sans-serif"],
+                        display: ["Plus Jakarta Sans", "sans-serif"],
+                        body: ["Inter", "sans-serif"],
+                        label: ["Public Sans", "sans-serif"]
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-fill {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface-container text-on-surface font-body antialiased selection:bg-primary-container selection:text-primary">
+<!-- TopNavBar -->
+<nav class="docked full-width top-0 ml-64 bg-surface dark:bg-surface-container-high border-b border-on-variant/20 shadow-sm flex justify-between items-center h-16 px-6 fixed w-[calc(100%-16rem)] z-10">
+<div class="flex items-center gap-4 w-96">
+<div class="relative w-full">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-variant">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container rounded-full border-none focus:ring-2 focus:ring-primary text-sm text-on-surface" placeholder="Search patients, medicines..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<button class="relative p-2 text-on-variant hover:bg-surface-container rounded-full transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-error rounded-full border-2 border-surface"></span>
+</button>
+<div class="flex items-center gap-3 border-l border-on-variant/20 pl-6">
+<div class="text-right hidden sm:block">
+<p class="text-sm font-semibold text-primary">Welcome back, Rajesh 👋</p>
+<p class="text-xs text-on-variant font-label">Rajesh Kumar</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-primary-container text-primary flex items-center justify-center font-bold text-lg border border-primary/20">
+                    RK
+                </div>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-64 bg-[#0F766E] shadow-lg flex flex-col z-20">
+<div class="p-6 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+<span class="material-symbols-outlined text-white text-xl">medication</span>
+</div>
+<div>
+<h1 class="text-xl font-headline font-bold text-white tracking-tight">MedRefill</h1>
+<p class="text-[10px] text-teal-100 uppercase tracking-wider font-semibold opacity-80">Pharmacy Manager</p>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1">
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">group</span>
+                Customers
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">pill</span>
+                Medicines
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">description</span>
+                Prescriptions
+            </a>
+<a class="bg-[#0D9488] text-white rounded-lg mx-2 transition-all duration-200 shadow-md flex items-center gap-3 px-4 py-3 font-medium text-sm border border-teal-500/30" href="#">
+<span class="material-symbols-outlined">event_repeat</span>
+                Refills
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">shopping_cart</span>
+                Orders
+            </a>
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">upload_file</span>
+                Import Data
+            </a>
+<div class="mt-8 border-t border-teal-700/50 pt-4">
+<a class="text-teal-50 hover:bg-white/10 rounded-lg mx-2 transition-colors flex items-center gap-3 px-4 py-3 font-medium text-sm" href="#">
+<span class="material-symbols-outlined">settings</span>
+                    Settings
+                </a>
+</div>
+</div>
+<div class="p-4 mt-auto">
+<button class="w-full flex items-center gap-3 px-4 py-3 text-teal-100 hover:bg-white/10 rounded-lg transition-colors border border-teal-600">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="text-sm font-medium">Rajesh Kumar</span>
+</button>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="ml-64 mt-16 p-8 min-h-screen">
+<!-- Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+<div>
+<h2 class="text-3xl font-headline font-bold text-on-surface mb-2">Refill Center</h2>
+<p class="text-on-variant">Track and manage medicine refills for chronic patients</p>
+</div>
+<div class="flex gap-3">
+<button class="px-5 py-2.5 bg-surface border border-on-variant/30 text-on-surface font-semibold rounded-lg hover:bg-surface-container transition-colors shadow-sm text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">download</span>
+                    Export Report
+                </button>
+<button class="px-5 py-2.5 bg-primary text-white font-semibold rounded-lg hover:bg-teal-700 transition-colors shadow-sm text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">send</span>
+                    Send All Reminders
+                </button>
+</div>
+</div>
+<!-- Stats Row -->
+<div class="flex flex-wrap gap-4 mb-8">
+<div class="bg-error text-white px-4 py-2 rounded-full font-semibold text-sm shadow-sm flex items-center gap-2 border border-red-600">
+<span class="material-symbols-outlined text-base">warning</span>
+                Overdue: 3
+            </div>
+<div class="bg-warning text-yellow-950 px-4 py-2 rounded-full font-semibold text-sm shadow-sm flex items-center gap-2 border border-amber-500">
+<span class="material-symbols-outlined text-base">schedule</span>
+                Due Today: 5
+            </div>
+<div class="bg-secondary text-white px-4 py-2 rounded-full font-semibold text-sm shadow-sm flex items-center gap-2 border border-blue-700">
+<span class="material-symbols-outlined text-base">calendar_today</span>
+                This Week: 12
+            </div>
+<div class="bg-surface border border-on-variant/20 text-on-surface px-4 py-2 rounded-full font-semibold text-sm shadow-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-base">monitoring</span>
+                Total Active: 248
+            </div>
+</div>
+<!-- Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Left Column (Timeline) 60% -->
+<div class="lg:col-span-7 flex flex-col gap-6">
+<div class="bg-surface rounded-xl shadow-sm border border-on-variant/10 overflow-hidden">
+<div class="p-5 border-b border-on-variant/10 flex justify-between items-center bg-surface-container/50">
+<h3 class="font-headline font-semibold text-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">timeline</span>
+                            Refill Timeline
+                        </h3>
+<button class="text-primary text-sm font-medium hover:underline">View All</button>
+</div>
+<div class="p-6 flex flex-col gap-8">
+<!-- OVERDUE SECTION -->
+<div>
+<h4 class="text-xs font-bold text-error uppercase tracking-wider mb-4 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+                                Overdue (2)
+                            </h4>
+<div class="flex flex-col gap-3">
+<!-- Card 1 -->
+<div class="p-4 rounded-lg border-l-4 border-error bg-red-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-full bg-error/10 text-error font-bold flex items-center justify-center text-sm shrink-0">AM</div>
+<div>
+<p class="font-semibold text-on-surface">Anita Mishra</p>
+<p class="text-sm font-medium text-on-variant">Metformin 500mg</p>
+<div class="flex items-center gap-1 mt-1 text-xs text-error font-medium">
+<span class="material-symbols-outlined text-[14px]">error</span>
+                                                Due Sep 1 (2 days overdue)
+                                            </div>
+</div>
+</div>
+<div class="flex gap-2 shrink-0">
+<button class="px-3 py-1.5 rounded-md border border-error text-error text-xs font-semibold hover:bg-error/5 transition-colors">Call Now</button>
+<button class="px-3 py-1.5 rounded-md bg-error text-white text-xs font-semibold hover:bg-red-600 transition-colors">Create Order</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="p-4 rounded-lg border-l-4 border-error bg-red-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-full bg-error/10 text-error font-bold flex items-center justify-center text-sm shrink-0">SD</div>
+<div>
+<p class="font-semibold text-on-surface">Sunita Devi</p>
+<p class="text-sm font-medium text-on-variant">Atorvastatin 10mg</p>
+<div class="flex items-center gap-1 mt-1 text-xs text-error font-medium">
+<span class="material-symbols-outlined text-[14px]">error</span>
+                                                Due Sep 2 (1 day overdue)
+                                            </div>
+</div>
+</div>
+<div class="flex gap-2 shrink-0">
+<button class="px-3 py-1.5 rounded-md border border-error text-error text-xs font-semibold hover:bg-error/5 transition-colors">Call Now</button>
+<button class="px-3 py-1.5 rounded-md bg-error text-white text-xs font-semibold hover:bg-red-600 transition-colors">Create Order</button>
+</div>
+</div>
+</div>
+</div>
+<!-- DUE TODAY SECTION -->
+<div>
+<h4 class="text-xs font-bold text-warning uppercase tracking-wider mb-4 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-warning"></span>
+                                Due Today (2)
+                            </h4>
+<div class="flex flex-col gap-3">
+<!-- Card 3 -->
+<div class="p-4 rounded-lg border border-warning/30 bg-amber-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-full bg-warning/20 text-yellow-900 font-bold flex items-center justify-center text-sm shrink-0">AK</div>
+<div>
+<p class="font-semibold text-on-surface">Amit Kumar</p>
+<p class="text-sm font-medium text-on-variant">Metformin 500mg</p>
+<div class="flex items-center gap-1 mt-1 text-xs text-warning font-medium">
+<span class="material-symbols-outlined text-[14px]">today</span>
+                                                Due today (Sep 3)
+                                            </div>
+</div>
+</div>
+<div class="flex gap-2 shrink-0">
+<button class="px-3 py-1.5 rounded-md border border-warning text-yellow-800 text-xs font-semibold hover:bg-warning/10 transition-colors">Send Reminder</button>
+<button class="px-3 py-1.5 rounded-md bg-warning text-yellow-950 text-xs font-semibold hover:bg-amber-500 transition-colors">Create Order</button>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="p-4 rounded-lg border border-warning/30 bg-amber-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-start gap-4">
+<div class="w-10 h-10 rounded-full bg-warning/20 text-yellow-900 font-bold flex items-center justify-center text-sm shrink-0">AK</div>
+<div>
+<p class="font-semibold text-on-surface">Amit Kumar</p>
+<p class="text-sm font-medium text-on-variant">Amlodipine 5mg</p>
+<div class="flex items-center gap-1 mt-1 text-xs text-warning font-medium">
+<span class="material-symbols-outlined text-[14px]">today</span>
+                                                Due today (Sep 3)
+                                            </div>
+</div>
+</div>
+<div class="flex gap-2 shrink-0">
+<button class="px-3 py-1.5 rounded-md border border-warning text-yellow-800 text-xs font-semibold hover:bg-warning/10 transition-colors">Send Reminder</button>
+<button class="px-3 py-1.5 rounded-md bg-warning text-yellow-950 text-xs font-semibold hover:bg-amber-500 transition-colors">Create Order</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column (Widgets) 40% -->
+<div class="lg:col-span-5 flex flex-col gap-6">
+<!-- Quick Filters -->
+<div class="bg-surface rounded-xl shadow-sm border border-on-variant/10 p-5">
+<h3 class="font-headline font-semibold text-sm mb-4 text-on-surface">Quick Filters</h3>
+<div class="flex flex-wrap gap-2">
+<button class="px-4 py-1.5 rounded-full bg-primary text-white text-xs font-semibold border border-primary">Show All</button>
+<button class="px-4 py-1.5 rounded-full bg-surface text-on-variant text-xs font-medium border border-on-variant/30 hover:bg-surface-container">Diabetes Only</button>
+<button class="px-4 py-1.5 rounded-full bg-surface text-on-variant text-xs font-medium border border-on-variant/30 hover:bg-surface-container">BP Only</button>
+<button class="px-4 py-1.5 rounded-full bg-surface text-on-variant text-xs font-medium border border-on-variant/30 hover:bg-surface-container">Thyroid Only</button>
+</div>
+</div>
+<!-- Calendar Widget Placeholder (Simplified for prompt scope) -->
+<div class="bg-surface rounded-xl shadow-sm border border-on-variant/10 p-6">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-headline font-bold text-lg">September 2026</h3>
+<div class="flex gap-2">
+<button class="p-1 rounded hover:bg-surface-container"><span class="material-symbols-outlined text-sm">chevron_left</span></button>
+<button class="p-1 rounded hover:bg-surface-container"><span class="material-symbols-outlined text-sm">chevron_right</span></button>
+</div>
+</div>
+<!-- Minimal visual representation of calendar -->
+<div class="grid grid-cols-7 gap-2 text-center text-sm">
+<div class="text-xs text-on-variant font-medium mb-2">Su</div>
+<div class="text-xs text-on-variant font-medium mb-2">Mo</div>
+<div class="text-xs text-on-variant font-medium mb-2">Tu</div>
+<div class="text-xs text-on-variant font-medium mb-2">We</div>
+<div class="text-xs text-on-variant font-medium mb-2">Th</div>
+<div class="text-xs text-on-variant font-medium mb-2">Fr</div>
+<div class="text-xs text-on-variant font-medium mb-2">Sa</div>
+<!-- Row 1 -->
+<div class="py-2 text-on-variant/40">30</div>
+<div class="py-2 text-on-variant/40">31</div>
+<div class="py-2 relative">
+                            1
+                            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-error"></div>
+</div>
+<div class="py-2 relative">
+                            2
+                            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-error"></div>
+</div>
+<div class="py-2 relative">
+<div class="w-8 h-8 mx-auto rounded-full bg-primary text-white flex items-center justify-center font-bold">3</div>
+<div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-warning"></div>
+</div>
+<div class="py-2">4</div>
+<div class="py-2 relative">
+                            5
+                            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-orange-500"></div>
+</div>
+</div>
+</div>
+<!-- Reminder Stats -->
+<div class="bg-surface rounded-xl shadow-sm border border-on-variant/10 p-6">
+<h3 class="font-headline font-semibold text-lg mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">analytics</span>
+                        Reminder Stats
+                    </h3>
+<div class="space-y-4 mb-6">
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-variant">Sent today</span>
+<span class="font-bold text-on-surface">5</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-variant">Confirmed</span>
+<span class="font-bold text-success">3</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-variant">Pending response</span>
+<span class="font-bold text-warning">2</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-variant">Delivery scheduled</span>
+<span class="font-bold text-primary">4</span>
+</div>
+</div>
+<!-- Abstract bar chart -->
+<div class="pt-4 border-t border-on-variant/10">
+<p class="text-xs text-on-variant mb-3 uppercase tracking-wider font-semibold">Weekly Trends</p>
+<div class="flex items-end justify-between h-20 gap-2">
+<div class="w-full bg-primary-container rounded-t-sm h-[40%] hover:bg-primary/30 transition-colors"></div>
+<div class="w-full bg-primary-container rounded-t-sm h-[60%] hover:bg-primary/30 transition-colors"></div>
+<div class="w-full bg-primary rounded-t-sm h-[90%] shadow-sm relative group">
+<div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-white text-[10px] py-1 px-2 rounded hidden group-hover:block whitespace-nowrap">Peak Day</div>
+</div>
+<div class="w-full bg-primary-container rounded-t-sm h-[30%] hover:bg-primary/30 transition-colors"></div>
+<div class="w-full bg-primary-container rounded-t-sm h-[50%] hover:bg-primary/30 transition-colors"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

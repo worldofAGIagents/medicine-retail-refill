@@ -1,0 +1,81 @@
+{
+  "name": "projects/2936810172904809805",
+  "projectId": "2936810172904809805",
+  "title": "MedRefill - Pharmacy Auto-Refill Dashboard",
+  "visibility": "PRIVATE",
+  "projectType": "PROJECT_DESIGN",
+  "origin": "STITCH",
+  "designSystem": {
+    "name": "assets/11329075963606555615",
+    "displayName": "MedRefill Pharmacy Theme",
+    "theme": {
+      "colorMode": "LIGHT",
+      "roundness": "ROUND_TWELVE",
+      "customColor": "#0D9488",
+      "headlineFont": "PLUS_JAKARTA_SANS",
+      "bodyFont": "INTER",
+      "colorVariant": "TONAL_SPOT",
+      "overrideSecondaryColor": "#2563EB",
+      "overrideTertiaryColor": "#F59E0B",
+      "overrideNeutralColor": "#64748B"
+    }
+  },
+  "screens": {
+    "logo": {
+      "id": "8f425bba5a3f4b90b94ab449fe95fbf8",
+      "sourceScreen": "projects/2936810172904809805/screens/8f425bba5a3f4b90b94ab449fe95fbf8",
+      "width": 1024,
+      "height": 1024,
+      "title": "MedRefill Logo",
+      "type": "IMAGE"
+    },
+    "dashboard": {
+      "id": "baf3debc5b38467d831c53b020672e67",
+      "sourceScreen": "projects/2936810172904809805/screens/baf3debc5b38467d831c53b020672e67",
+      "width": 2560,
+      "height": 2676,
+      "title": "MedRefill Dashboard",
+      "type": "DESIGN"
+    },
+    "customers": {
+      "id": "d2b583b5f03c498da3b32c6ba869160c",
+      "sourceScreen": "projects/2936810172904809805/screens/d2b583b5f03c498da3b32c6ba869160c",
+      "width": 2560,
+      "height": 2048,
+      "title": "MedRefill Customers List",
+      "type": "DESIGN"
+    },
+    "prescription-form": {
+      "id": "a4cf7c3f20dc48428113f87d9e6dd312",
+      "sourceScreen": "projects/2936810172904809805/screens/a4cf7c3f20dc48428113f87d9e6dd312",
+      "width": 2560,
+      "height": 2048,
+      "title": "New Prescription Form",
+      "type": "DESIGN"
+    },
+    "medicines": {
+      "id": "421e6bca8b934d3cbc52ed4480ae0873",
+      "sourceScreen": "projects/2936810172904809805/screens/421e6bca8b934d3cbc52ed4480ae0873",
+      "width": 2560,
+      "height": 2048,
+      "title": "Medicines Inventory",
+      "type": "DESIGN"
+    },
+    "refills": {
+      "id": "dd44b83961604d91a9dede2df04f2689",
+      "sourceScreen": "projects/2936810172904809805/screens/dd44b83961604d91a9dede2df04f2689",
+      "width": 2560,
+      "height": 2048,
+      "title": "Refill Center Dashboard",
+      "type": "DESIGN"
+    },
+    "import": {
+      "id": "1ca06f942d5f4fdd885ff5bb6e2d440a",
+      "sourceScreen": "projects/2936810172904809805/screens/1ca06f942d5f4fdd885ff5bb6e2d440a",
+      "width": 2560,
+      "height": 2048,
+      "title": "Import from MARG ERP",
+      "type": "DESIGN"
+    }
+  }
+}
