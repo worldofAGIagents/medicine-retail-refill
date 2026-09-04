@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     });
 
     const totalAmount = activeRefills.reduce((sum, item) => {
-      const packs = Math.ceil(item.lastPurchaseQty / (item.medicine.unitsPerPack || 10));
+      const packs = Math.ceil((item.lastPurchaseQty || 10) / (item.medicine.unitsPerPack || 10));
       return sum + (item.medicine.mrp * packs);
     }, 0);
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const rowsHtml = activeRefills
       .map((item, idx) => {
         const days = item.refillCalc.daysRemaining;
-        const packs = Math.ceil(item.lastPurchaseQty / (item.medicine.unitsPerPack || 10));
+        const packs = Math.ceil((item.lastPurchaseQty || 10) / (item.medicine.unitsPerPack || 10));
         const bill = item.medicine.mrp * packs;
         const statusBadge =
           days <= 0
