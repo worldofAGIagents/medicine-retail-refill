@@ -5,8 +5,9 @@ import { DashboardLayout } from '@/components/layout';
 import {
   Settings, Database, MessageSquare, Truck, Bell, Save, CheckCircle2,
   ShieldCheck, RefreshCw, Loader2, Sparkles, RotateCcw, Copy, Check, Info,
-  Smartphone, Eye, Layers
+  Smartphone, Eye, Layers, IndianRupee, QrCode, AlertTriangle
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   DEFAULT_TEMPLATES,
   TEMPLATE_DEFINITIONS,
@@ -34,6 +35,10 @@ export default function SettingsPage() {
     phone: '+91 98765 43210',
     address: 'Shop 14, Main Market, Sector 18, Noida, UP - 201301',
   });
+
+  // UPI Payment Config
+  const [upiId, setUpiId] = useState('');
+  const [upiPayeeName, setUpiPayeeName] = useState('');
 
   // MARG ERP Config
   const [margConfig, setMargConfig] = useState({
@@ -100,6 +105,10 @@ export default function SettingsPage() {
             overdueTemplate: data.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
             outForDeliveryTemplate: data.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
           });
+          // UPI settings
+          if (data.upiId) setUpiId(data.upiId);
+          if (data.upiPayeeName) setUpiPayeeName(data.upiPayeeName);
+          else if (data.pharmacyName) setUpiPayeeName(data.pharmacyName);
         }
       })
       .catch((err) => console.error('Failed to load settings:', err))
@@ -176,6 +185,8 @@ export default function SettingsPage() {
         infantMilkTemplate: templates.infantMilkTemplate,
         overdueTemplate: templates.overdueTemplate,
         outForDeliveryTemplate: templates.outForDeliveryTemplate,
+        upiId: upiId,
+        upiPayeeName: upiPayeeName,
       };
 
       const res = await fetch('/api/settings', {
@@ -576,6 +587,104 @@ export default function SettingsPage() {
                 onChange={(e) => setPharmacyInfo({ ...pharmacyInfo, address: e.target.value })}
                 className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* 2.5 UPI PAYMENT CONFIGURATION */}
+        <div className="bg-white rounded-3xl p-4 sm:p-7 shadow-xs border border-gray-100 space-y-4">
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+              <IndianRupee className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-gray-900 font-heading">Payment & UPI Configuration</h2>
+                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  QR Pay
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">Configure your UPI ID for doorstep delivery QR code payments</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left: UPI Fields */}
+            <div className="lg:col-span-7 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  UPI ID (VPA) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value.trim())}
+                  placeholder="e.g. pharmacy@upi, 9876543210@ybl, shop@paytm"
+                  className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
+                />
+                {upiId && !upiId.includes('@') && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    UPI ID should be in format: name@bankhandle (e.g. shop@ybl)
+                  </p>
+                )}
+                <p className="text-[11px] text-gray-400 mt-1">
+                  This is used to generate dynamic QR codes during doorstep delivery payment collection
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">UPI Payee Name (shown on customer&apos;s UPI app)</label>
+                <input
+                  type="text"
+                  value={upiPayeeName}
+                  onChange={(e) => setUpiPayeeName(e.target.value)}
+                  placeholder="e.g. MedRefill Chemist"
+                  className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-start gap-1.5 text-[11px] text-gray-500 bg-indigo-50/60 p-3 rounded-xl border border-indigo-100">
+                <Info className="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
+                <span>
+                  During delivery, the delivery boy will select <strong>Cash</strong> or <strong>Online</strong> payment.
+                  For online, they enter the amount and a QR code is generated instantly for the customer to scan via any UPI app (GPay, PhonePe, Paytm, BHIM).
+                </span>
+              </div>
+            </div>
+
+            {/* Right: Test QR Preview */}
+            <div className="lg:col-span-5 space-y-3">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                <QrCode className="w-4 h-4 text-indigo-600" />
+                <span>Test QR Preview (₹100 sample)</span>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col items-center gap-3 shadow-sm">
+                {upiId && upiId.includes('@') ? (
+                  <>
+                    <QRCodeSVG
+                      value={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiPayeeName || 'Pharmacy')}&am=100&cu=INR&tn=Test-Payment`}
+                      size={160}
+                      bgColor="#ffffff"
+                      fgColor="#1e1b4b"
+                      level="M"
+                      includeMargin={false}
+                    />
+                    <div className="text-center space-y-1">
+                      <p className="text-xs font-bold text-gray-900">{upiPayeeName || 'Pharmacy'}</p>
+                      <p className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">{upiId}</p>
+                      <p className="text-[10px] text-gray-400">Scan with any UPI app to verify</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <QrCode className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                    <p className="text-xs font-semibold text-gray-500">Enter a valid UPI ID</p>
+                    <p className="text-[11px] text-gray-400">QR preview will appear here</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

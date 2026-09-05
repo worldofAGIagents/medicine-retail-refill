@@ -35,6 +35,8 @@ export async function GET() {
       infantMilkTemplate: settings.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate,
       overdueTemplate: settings.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
       outForDeliveryTemplate: settings.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
+      upiId: settings.upiId || '',
+      upiPayeeName: settings.upiPayeeName || settings.pharmacyName || 'MedRefill Chemist',
     };
 
     return NextResponse.json(defaults);

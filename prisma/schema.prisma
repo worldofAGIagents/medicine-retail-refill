@@ -86,6 +86,9 @@ model Order {
   customer        Customer @relation(fields: [customerId], references: [id])
   totalAmount     Float    @default(0)
   status          String   @default("preparing") // preparing, ready, out_for_delivery, delivered, cancelled
+  paymentMode     String?  // "cash" | "online" | null (not yet collected)
+  paymentStatus   String   @default("pending") // "pending" | "collected" | "failed"
+  amountCollected Float?   // actual amount collected
   deliveryAddress String?
   deliveryDate    DateTime?
   notes           String?
