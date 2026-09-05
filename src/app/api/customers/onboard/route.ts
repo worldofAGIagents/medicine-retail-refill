@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       city = '',
       primaryCondition: rawCondition,
       condition,
+      medicines: inputMedicines,
       medicineId,
       dailyDosage = 1,
       lastPurchaseQty: rawQty,
@@ -25,7 +26,6 @@ export async function POST(request: Request) {
     } = body;
 
     const primaryCondition = rawCondition || condition || 'General';
-    const lastPurchaseQty = rawQty || quantityPurchased || 30;
 
     if (!name || !phone) {
       return NextResponse.json({ error: 'Patient name and phone number are required' }, { status: 400 });
@@ -60,63 +60,86 @@ export async function POST(request: Request) {
       },
     });
 
-    let prescription = null;
-    let medicineUpdated = false;
+    const createdPrescriptions: any[] = [];
+    let updatedCount = 0;
 
-    // 2. If a medicine was selected during onboarding, link prescription and auto-categorize medicine
-    if (medicineId) {
-      const med = await db.medicine.findUnique({ where: { id: medicineId } });
+    // 2. Normalise medicines list: either array from inputMedicines or single medicineId
+    const medList: any[] = [];
+    if (Array.isArray(inputMedicines) && inputMedicines.length > 0) {
+      medList.push(...inputMedicines);
+    } else if (medicineId) {
+      medList.push({
+        medicineId,
+        dailyDosage: Number(dailyDosage) || 1,
+        lastPurchaseQty: Number(rawQty || quantityPurchased) || 30,
+        lastPurchaseDate,
+        bufferDays: Number(bufferDays) || 3,
+        doctorName,
+        customPackaging,
+        unitType,
+      });
+    }
 
-      if (med) {
-        // DYNAMIC LEARNING: Tag this medicine with the customer's condition & mark as chronic
-        if (primaryCondition && primaryCondition !== 'General') {
-          await db.medicine.update({
-            where: { id: medicineId },
-            data: {
-              category: primaryCondition,
-              isChronicMed: true,
-            },
-          });
-          medicineUpdated = true;
-        }
+    // 3. Process each medicine: dynamically categorize & create prescription
+    for (const item of medList) {
+      if (!item.medicineId) continue;
+      const med = await db.medicine.findUnique({ where: { id: item.medicineId } });
+      if (!med) continue;
 
-        // Calculate refill dates
-        const purchaseDateObj = lastPurchaseDate ? new Date(lastPurchaseDate) : new Date();
-        const refillCalc = calculateRefill({
-          lastPurchaseDate: purchaseDateObj,
-          lastPurchaseQty: Number(lastPurchaseQty) || 30,
-          dailyDosage: Number(dailyDosage) || 1,
-          bufferDays: Number(bufferDays) || 3,
-        });
-
-        // Create or update prescription
-        prescription = await db.prescription.create({
+      // DYNAMIC LEARNING: Tag this medicine with the customer's condition & mark as chronic
+      if (primaryCondition && primaryCondition !== 'General') {
+        await db.medicine.update({
+          where: { id: item.medicineId },
           data: {
-            customerId: customer.id,
-            medicineId,
-            dailyDosage: Number(dailyDosage) || 1,
-            lastPurchaseDate: purchaseDateObj,
-            lastPurchaseQty: Number(lastPurchaseQty) || 30,
-            nextRefillDate: refillCalc.nextRefillDate,
-            bufferDays: Number(bufferDays) || 3,
-            doctorName: doctorName || null,
-            customPackaging: customPackaging || (primaryCondition === 'Infant Milk' ? '400g Tin' : `${med.unitsPerPack} tabs/strip`),
-            unitType: primaryCondition === 'Infant Milk' ? 'grams' : unitType,
-            isActive: true,
-          },
-          include: {
-            medicine: true,
+            category: primaryCondition,
+            isChronicMed: true,
           },
         });
+        updatedCount++;
       }
+
+      // Calculate refill dates
+      const purchaseDateObj = item.lastPurchaseDate ? new Date(item.lastPurchaseDate) : new Date();
+      const qty = Number(item.lastPurchaseQty || item.quantityPurchased) || 30;
+      const dose = Number(item.dailyDosage) || 1;
+      const buffer = Number(item.bufferDays) || 3;
+
+      const refillCalc = calculateRefill({
+        lastPurchaseDate: purchaseDateObj,
+        lastPurchaseQty: qty,
+        dailyDosage: dose,
+        bufferDays: buffer,
+      });
+
+      const presc = await db.prescription.create({
+        data: {
+          customerId: customer.id,
+          medicineId: item.medicineId,
+          dailyDosage: dose,
+          lastPurchaseDate: purchaseDateObj,
+          lastPurchaseQty: qty,
+          nextRefillDate: refillCalc.nextRefillDate,
+          bufferDays: buffer,
+          doctorName: item.doctorName || doctorName || null,
+          customPackaging: item.customPackaging || (primaryCondition === 'Infant Milk' ? '400g Tin' : `${med.unitsPerPack} tabs/strip`),
+          unitType: primaryCondition === 'Infant Milk' ? 'grams' : (item.unitType || 'tablets'),
+          isActive: true,
+        },
+        include: {
+          medicine: true,
+        },
+      });
+      createdPrescriptions.push(presc);
     }
 
     return NextResponse.json({
       success: true,
       customer,
-      prescription,
-      medicineUpdated,
-      message: `Patient ${customer.name} onboarded successfully!`,
+      prescription: createdPrescriptions[0] || null,
+      prescriptions: createdPrescriptions,
+      medicineUpdated: updatedCount > 0,
+      updatedMedicinesCount: updatedCount,
+      message: `Patient ${customer.name} onboarded with ${createdPrescriptions.length} medicine(s) successfully!`,
     }, { status: 201 });
   } catch (error: any) {
     console.error('Onboarding error:', error);
