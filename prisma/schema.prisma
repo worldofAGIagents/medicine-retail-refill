@@ -39,6 +39,7 @@ model Customer {
   city            String   @default("")
   whatsappEnabled Boolean  @default(true)
   consentGiven    Boolean  @default(false)
+  primaryCondition String?  // e.g. Blood Pressure, Diabetes, Thyroid, Infant Milk, Heart
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   prescriptions   Prescription[]

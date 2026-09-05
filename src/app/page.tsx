@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout';
 import Link from 'next/link';
 import {
   Users, RefreshCw, ClipboardList, Package, Plus, Upload,
-  ArrowRight, AlertTriangle, TrendingUp, Bell
+  ArrowRight, Bell, Sparkles, UserPlus, Heart, CheckCircle2, TrendingUp
 } from 'lucide-react';
+import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 
 interface DashboardStats {
   totalCustomers: number;
@@ -25,51 +26,71 @@ interface RefillItem {
   nextRefillDate: string;
 }
 
+interface RecentCustomer {
+  id: string;
+  name: string;
+  phone: string;
+  primaryCondition?: string | null;
+  prescriptions?: Array<{
+    medicine: { name: string; category: string };
+  }>;
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     totalCustomers: 0, upcomingRefills: 0,
     activePrescriptions: 0, pendingDeliveries: 0,
   });
   const [refills, setRefills] = useState<RefillItem[]>([]);
+  const [recentCustomers, setRecentCustomers] = useState<RecentCustomer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showOnboardModal, setShowOnboardModal] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [statsRes, refillsRes, customersRes] = await Promise.all([
+        fetch('/api/dashboard'),
+        fetch('/api/refills'),
+        fetch('/api/customers'),
+      ]);
+      if (statsRes.ok) {
+        const s = await statsRes.json();
+        setStats({
+          totalCustomers: s.totalCustomers || 0,
+          upcomingRefills: s.upcomingRefills || s.upcomingRefillsCount || 0,
+          activePrescriptions: s.activePrescriptions || s.activePrescriptionsCount || 0,
+          pendingDeliveries: s.pendingDeliveries || 0,
+        });
+      }
+      if (refillsRes.ok) {
+        const data = await refillsRes.json();
+        const mapped: RefillItem[] = (Array.isArray(data) ? data.slice(0, 6) : []).map((item: any) => ({
+          id: item.id,
+          customerName: item.customer?.name || item.customerName || 'Customer',
+          medicineName: item.medicine?.name || item.medicineName || 'Medicine',
+          dailyDosage: item.dailyDosage || 1,
+          daysRemaining: item.refillCalc?.daysRemaining ?? item.daysRemaining ?? 0,
+          urgency: item.refillCalc?.urgency || item.urgency || 'ok',
+          nextRefillDate: item.refillCalc?.nextRefillDate || item.nextRefillDate || '',
+        }));
+        setRefills(mapped);
+      }
+      if (customersRes.ok) {
+        const custData = await customersRes.json();
+        if (Array.isArray(custData)) {
+          setRecentCustomers(custData.slice(0, 5));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch dashboard data', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [statsRes, refillsRes] = await Promise.all([
-          fetch('/api/dashboard'),
-          fetch('/api/refills'),
-        ]);
-        if (statsRes.ok) {
-          const s = await statsRes.json();
-          setStats({
-            totalCustomers: s.totalCustomers || 0,
-            upcomingRefills: s.upcomingRefills || s.upcomingRefillsCount || 0,
-            activePrescriptions: s.activePrescriptions || s.activePrescriptionsCount || 0,
-            pendingDeliveries: s.pendingDeliveries || 0,
-          });
-        }
-        if (refillsRes.ok) {
-          const data = await refillsRes.json();
-          const mapped: RefillItem[] = (Array.isArray(data) ? data.slice(0, 6) : []).map((item: any) => ({
-            id: item.id,
-            customerName: item.customer?.name || item.customerName || 'Customer',
-            medicineName: item.medicine?.name || item.medicineName || 'Medicine',
-            dailyDosage: item.dailyDosage || 1,
-            daysRemaining: item.refillCalc?.daysRemaining ?? item.daysRemaining ?? 0,
-            urgency: item.refillCalc?.urgency || item.urgency || 'ok',
-            nextRefillDate: item.refillCalc?.nextRefillDate || item.nextRefillDate || '',
-          }));
-          setRefills(mapped);
-        }
-      } catch (e) {
-        console.error('Failed to fetch dashboard data', e);
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleDashboardRemind = async (refill: RefillItem) => {
     try {
@@ -120,6 +141,21 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
+      {/* Top Banner / Onboard Trigger */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Pharmacy Refill Dashboard</h1>
+          <p className="text-xs sm:text-sm text-gray-500">Track chronic patient refill cycles, upcoming schedules &amp; WhatsApp reminders</p>
+        </div>
+        <button
+          onClick={() => setShowOnboardModal(true)}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-all hover:shadow-md cursor-pointer"
+        >
+          <UserPlus className="w-4 h-4" />
+          + Onboard Patient
+        </button>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
         {statCards.map((card) => (
@@ -172,9 +208,28 @@ export default function DashboardPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading...</td></tr>
+                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">Loading refill data...</td></tr>
                 ) : refills.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-400">No upcoming refills</td></tr>
+                  <tr>
+                    <td colSpan={6} className="text-center py-12 px-4">
+                      <div className="max-w-sm mx-auto space-y-3">
+                        <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mx-auto">
+                          <Heart className="w-6 h-6" />
+                        </div>
+                        <h4 className="font-semibold text-gray-800 text-sm">No Upcoming Refills Yet</h4>
+                        <p className="text-xs text-gray-500">
+                          Enrol your regular patients with BP, Diabetes, Thyroid or baby food to automatically predict and schedule their next refills.
+                        </p>
+                        <button
+                          onClick={() => setShowOnboardModal(true)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Onboard First Patient
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : (
                   refills.map((refill) => (
                     <tr key={refill.id} className="hover:bg-gray-50/50 transition-colors">
@@ -223,84 +278,99 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <h3 className="text-base font-semibold text-gray-900 mb-4 font-heading">Quick Actions</h3>
             <div className="space-y-3">
-              <Link href="/customers?action=add" className="flex items-center gap-3 p-3 rounded-xl bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors group">
-                <div className="p-2 bg-teal-100 rounded-lg group-hover:bg-teal-200 transition-colors">
-                  <Plus className="w-4 h-4" />
+              <button
+                onClick={() => setShowOnboardModal(true)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl bg-teal-50 text-teal-800 hover:bg-teal-100 transition-colors group text-left cursor-pointer border border-teal-100"
+              >
+                <div className="p-2 bg-teal-600 text-white rounded-lg group-hover:bg-teal-700 transition-colors">
+                  <UserPlus className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">Add New Customer</p>
-                  <p className="text-xs text-teal-600">Register a chronic patient</p>
+                  <p className="text-sm font-semibold flex items-center gap-1.5">
+                    Onboard Patient <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  </p>
+                  <p className="text-xs text-teal-700">Patient + Condition + Medicine</p>
                 </div>
-              </Link>
-              <Link href="/prescriptions?action=add" className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors group">
+              </button>
+
+              <Link href="/medicines" className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors group">
                 <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                  <ClipboardList className="w-4 h-4" />
+                  <Package className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">New Prescription</p>
-                  <p className="text-xs text-blue-600">Track a medicine refill</p>
+                  <p className="text-sm font-semibold">Medicine Catalog</p>
+                  <p className="text-xs text-blue-600">Browse 9,259 shop products</p>
                 </div>
               </Link>
+
               <Link href="/import" className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors group">
                 <div className="p-2 bg-gray-200 rounded-lg group-hover:bg-gray-300 transition-colors">
                   <Upload className="w-4 h-4" />
                 </div>
                 <div>
                   <p className="text-sm font-semibold">Import from MARG</p>
-                  <p className="text-xs text-gray-500">Sync your ERP data</p>
+                  <p className="text-xs text-gray-500">Sync Excel stock &amp; prices</p>
                 </div>
               </Link>
             </div>
           </div>
 
-          {/* Today's Deliveries */}
+          {/* Enrolled Chronic Patients */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <h3 className="text-base font-semibold text-gray-900 mb-4 font-heading">Today&apos;s Deliveries</h3>
-            <div className="space-y-3">
-              {[
-                { name: 'Amit Kumar', medicine: 'Metformin 500mg', status: 'Preparing', color: 'bg-amber-400' },
-                { name: 'Sunita Devi', medicine: 'Atorvastatin 10mg', status: 'Out for Delivery', color: 'bg-blue-400' },
-                { name: 'Kavita Singh', medicine: 'Glimepiride 2mg', status: 'Delivered', color: 'bg-green-400' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${item.color}`} />
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{item.name}</p>
-                      <p className="text-xs text-gray-500">{item.medicine}</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-medium text-gray-500">{item.status}</span>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900 font-heading">Enrolled Patients</h3>
+              <Link href="/customers" className="text-xs text-teal-600 hover:text-teal-700 font-medium">
+                View all
+              </Link>
             </div>
+            {recentCustomers.length === 0 ? (
+              <div className="text-center py-6 px-3 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                <Users className="w-8 h-8 text-gray-300 mx-auto mb-1" />
+                <p className="text-xs font-semibold text-gray-700">No Patients Enrolled</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Click &quot;+ Onboard Patient&quot; to enrol your first repeat customer</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentCustomers.map((cust) => (
+                  <div key={cust.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div className="min-w-0 pr-2">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{cust.name}</p>
+                      <p className="text-xs text-gray-500">{cust.phone}</p>
+                    </div>
+                    {cust.primaryCondition && (
+                      <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                        {cust.primaryCondition}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Low Stock Alert */}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-red-100">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-              <h3 className="text-base font-semibold text-gray-900 font-heading">Low Stock Alert</h3>
-            </div>
-            <div className="space-y-3">
-              {[
-                { name: 'Glycomet 500mg', stock: 25, level: 'Low' },
-                { name: 'Pan-D 40mg', stock: 8, level: 'Critical' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between py-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{item.name}</p>
-                    <p className="text-xs text-gray-500">{item.stock} units left</p>
-                  </div>
-                  <button className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-1 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                    Reorder
-                  </button>
-                </div>
-              ))}
+          {/* Auto-Learning Banner */}
+          <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-2xl p-4 border border-teal-100 text-teal-900">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-teal-600 text-white rounded-lg shrink-0 mt-0.5">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="text-xs space-y-1">
+                <p className="font-bold text-teal-950">Dynamic Catalog Learning</p>
+                <p className="text-teal-800 leading-relaxed">
+                  Whenever you onboard a patient with a condition (e.g. Blood Pressure, Diabetes), the shop catalog automatically categorizes that medicine as chronic.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Onboard Patient Modal */}
+      <OnboardPatientModal
+        isOpen={showOnboardModal}
+        onClose={() => setShowOnboardModal(false)}
+        onSuccess={() => fetchData()}
+      />
     </DashboardLayout>
   );
 }

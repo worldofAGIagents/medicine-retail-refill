@@ -231,36 +231,15 @@ export default function MedicinesPage() {
                   <thead>
                     <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       <th className="py-3.5 px-6">Medicine &amp; Brand</th>
+                      <th className="py-3.5 px-4">Condition / Category</th>
                       <th className="py-3.5 px-4">Salt / Generic</th>
-                      <th className="py-3.5 px-4">Condition</th>
                       <th className="py-3.5 px-4">Packaging Size</th>
                       <th className="py-3.5 px-4">MRP (₹)</th>
-                      <th className="py-3.5 px-4">Stock In Hand</th>
-                      <th className="py-3.5 px-4 text-center">Status</th>
+                      <th className="py-3.5 px-4 text-center">Refill Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {medicines.map((m) => {
-                      let statusBadge = (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                          <CheckCircle className="w-3 h-3" /> In Stock
-                        </span>
-                      );
-
-                      if (m.currentStock === 0) {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
-                            <AlertTriangle className="w-3 h-3" /> Out of Stock
-                          </span>
-                        );
-                      } else if (m.currentStock <= m.reorderLevel) {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-                            <AlertTriangle className="w-3 h-3" /> Low Stock
-                          </span>
-                        );
-                      }
-
                       return (
                         <tr key={m.id} className="hover:bg-gray-50/60 transition-colors">
                           <td className="py-3.5 px-6">
@@ -281,19 +260,20 @@ export default function MedicinesPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-3.5 px-4 text-gray-600 text-xs font-medium max-w-[200px] truncate">
-                            {m.genericName || m.saltComposition || '-'}
-                          </td>
                           <td className="py-3.5 px-4">
-                            <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
                               m.category === 'Infant Milk' ? 'bg-pink-50 text-pink-700 border border-pink-200' :
                               m.category === 'Diabetes' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                              m.category === 'Blood Pressure' || m.category === 'BP' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                              m.category === 'Blood Pressure' || m.category === 'BP' ? 'bg-red-50 text-red-700 border border-red-200' :
                               m.category === 'Thyroid' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                              m.category === 'Heart' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
                               'bg-gray-50 text-gray-700 border border-gray-200'
                             }`}>
                               {m.category}
                             </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-gray-600 text-xs font-medium max-w-[200px] truncate">
+                            {m.genericName || m.saltComposition || '-'}
                           </td>
                           <td className="py-3.5 px-4">
                             <p className="text-xs font-semibold text-gray-800">
@@ -304,12 +284,10 @@ export default function MedicinesPage() {
                           <td className="py-3.5 px-4 font-bold text-gray-900 text-sm">
                             ₹{m.mrp}
                           </td>
-                          <td className="py-3.5 px-4">
-                            <span className="font-bold text-gray-800 text-sm">{m.currentStock}</span>
-                            <span className="text-xs text-gray-400 ml-1">units</span>
-                          </td>
                           <td className="py-3.5 px-4 text-center">
-                            {statusBadge}
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                              <CheckCircle className="w-3 h-3 text-teal-600" /> Active Catalog
+                            </span>
                           </td>
                         </tr>
                       );
