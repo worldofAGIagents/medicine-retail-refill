@@ -11,16 +11,21 @@ export async function POST(request: Request) {
       address,
       locality,
       city = '',
-      primaryCondition = 'General',
+      primaryCondition: rawCondition,
+      condition,
       medicineId,
       dailyDosage = 1,
-      lastPurchaseQty = 30,
+      lastPurchaseQty: rawQty,
+      quantityPurchased,
       lastPurchaseDate,
       bufferDays = 3,
       doctorName,
       customPackaging,
       unitType = 'tablets',
     } = body;
+
+    const primaryCondition = rawCondition || condition || 'General';
+    const lastPurchaseQty = rawQty || quantityPurchased || 30;
 
     if (!name || !phone) {
       return NextResponse.json({ error: 'Patient name and phone number are required' }, { status: 400 });
