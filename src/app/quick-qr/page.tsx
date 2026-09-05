@@ -16,7 +16,7 @@ export default function QuickQrPage() {
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [upiId, setUpiId] = useState<string>('worldofagent@okhdfcbank');
-  const [payeeName, setPayeeName] = useState<string>('Retailink Chemist');
+  const [payeeName, setPayeeName] = useState<string>('Manoj Medical Hall');
   const [copied, setCopied] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -24,6 +24,13 @@ export default function QuickQrPage() {
   const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    try {
+      const localId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
+      const localPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+      if (localId) setUpiId(localId);
+      if (localPayee) setPayeeName(localPayee);
+    } catch {}
+
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {

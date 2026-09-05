@@ -72,8 +72,8 @@ export function Sidebar({
               <Pill className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold font-heading tracking-tight">MedRefill</h1>
-              <p className="text-[10px] text-teal-300 -mt-0.5">Auto-Refill Dashboard</p>
+              <h1 className="text-base font-bold font-heading tracking-tight leading-tight">Manoj Medical Hall</h1>
+              <p className="text-[10px] text-teal-300">Sarfuddinpur • Muzaffarpur (843118)</p>
             </div>
           </div>
           <button
@@ -153,7 +153,7 @@ export function TopBar({ onMenuClick, userName }: { onMenuClick: () => void; use
         </button>
         <h2 className="text-base lg:text-lg font-semibold text-gray-800 font-heading">
           <span className="hidden sm:inline">Welcome back, {displayName.split(' ')[0]} 👋</span>
-          <span className="sm:hidden">MedRefill</span>
+          <span className="sm:hidden font-bold">Manoj Medical Hall</span>
         </h2>
       </div>
 

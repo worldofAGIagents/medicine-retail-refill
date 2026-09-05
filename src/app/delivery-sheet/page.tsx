@@ -45,9 +45,11 @@ export default function DeliverySheetPage() {
   const [refillsList, setRefillsList] = useState<RefillItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'today' | 'tomorrow' | 'dayAfter' | 'overdue'>('all');
-  const [riderName, setRiderName] = useState('Rahul Verma (Rider #1)');
-  const [pharmacyName, setPharmacyName] = useState('MedRefill Chemist & Druggist');
-  const [dlNumber, setDlNumber] = useState('DL-20B/12345/2022');
+  const [pharmacyName, setPharmacyName] = useState('Manoj Medical Hall');
+  const [address, setAddress] = useState('Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118');
+  const [dlNumber, setDlNumber] = useState('BR-20B/MUZ/2022');
+  const [riderName, setRiderName] = useState('Rider #1 (Village Route)');
+  const [selectedVillage, setSelectedVillage] = useState<string>('all');
   const [packedItems, setPackedItems] = useState<Record<string, boolean>>({});
   const [deliveredItems, setDeliveredItems] = useState<Record<string, boolean>>({});
   const [qrModalItem, setQrModalItem] = useState<{
@@ -72,6 +74,7 @@ export default function DeliverySheetPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.pharmacyName) setPharmacyName(data.pharmacyName);
+        if (data?.address) setAddress(data.address);
         if (data?.dlNumber) setDlNumber(data.dlNumber);
       })
       .catch(() => {});
@@ -90,14 +93,30 @@ export default function DeliverySheetPage() {
   const tomorrowList = refillsList.filter((r) => r.refillCalc?.daysRemaining === 2);
   const dayAfterList = refillsList.filter((r) => r.refillCalc?.daysRemaining === 3);
 
-  // Filter based on active tab
+  // Extract list of unique villages in refills
+  const villageList = Array.from(
+    new Set(
+      refillsList
+        .map((r) => r.customer.locality || (r.customer.address ? r.customer.address.split(',')[0].trim() : ''))
+        .filter(Boolean)
+    )
+  );
+
+  // Filter based on active tab & village
   const displayedItems = refillsList.filter((r) => {
     const days = r.refillCalc?.daysRemaining ?? 99;
-    if (activeTab === 'all') return days <= 3; // 3 days window + overdue
-    if (activeTab === 'overdue') return days <= 0;
-    if (activeTab === 'today') return days > 0 && days <= 1;
-    if (activeTab === 'tomorrow') return days === 2;
-    if (activeTab === 'dayAfter') return days === 3;
+    let matchTab = true;
+    if (activeTab === 'all') matchTab = days <= 3; // 3 days window + overdue
+    else if (activeTab === 'overdue') matchTab = days <= 0;
+    else if (activeTab === 'today') matchTab = days > 0 && days <= 1;
+    else if (activeTab === 'tomorrow') matchTab = days === 2;
+    else if (activeTab === 'dayAfter') matchTab = days === 3;
+
+    if (!matchTab) return false;
+    if (selectedVillage !== 'all') {
+      const v = (r.customer.locality || r.customer.address || '').toLowerCase();
+      return v.includes(selectedVillage.toLowerCase());
+    }
     return true;
   });
 
@@ -250,6 +269,44 @@ export default function DeliverySheetPage() {
           </button>
         </div>
 
+        {/* VILLAGE ROUTE CLUSTER FILTER (Hidden in print) */}
+        {villageList.length > 0 && (
+          <div className="no-print flex items-center gap-2 flex-wrap bg-white p-3 rounded-xl border border-gray-200 text-xs">
+            <span className="font-bold text-gray-700 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-teal-600" />
+              Village Route (10–20 KM):
+            </span>
+            <button
+              onClick={() => setSelectedVillage('all')}
+              className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                selectedVillage === 'all'
+                  ? 'bg-teal-700 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Villages
+            </button>
+            {villageList.map((village) => {
+              const count = refillsList.filter((r) =>
+                (r.customer.locality || r.customer.address || '').toLowerCase().includes(village.toLowerCase())
+              ).length;
+              return (
+                <button
+                  key={village}
+                  onClick={() => setSelectedVillage(village)}
+                  className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                    selectedVillage === village
+                      ? 'bg-teal-700 text-white'
+                      : 'bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200'
+                  }`}
+                >
+                  {village} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* ---------------- THE PRINTABLE A4 SHEET ---------------- */}
         <div className="printable-sheet bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 lg:p-8 space-y-6">
           
@@ -261,7 +318,7 @@ export default function DeliverySheetPage() {
                   {pharmacyName}
                 </h2>
                 <p className="text-xs text-gray-600 font-medium">
-                  Shop 14-16, Commercial Center, Sector 18, Noida • DL No: <strong>{dlNumber}</strong> • GSTIN: 07AAAAA0000A1Z5
+                  {address} • DL No: <strong>{dlNumber}</strong> • Delivery Coverage: 10–20 KM Village Radius (Muzaffarpur)
                 </p>
               </div>
               <div className="text-left sm:text-right">
@@ -356,7 +413,7 @@ export default function DeliverySheetPage() {
                         {/* Address */}
                         <td className="py-2 px-3 max-w-xs">
                           <p className="text-gray-800 font-medium">
-                            {item.customer.address || `${item.customer.locality || 'Sector 18'}, ${item.customer.city || 'Noida'}`}
+                            {item.customer.address || (item.customer.locality ? `Village: ${item.customer.locality}, Muzaffarpur` : 'Sarfuddinpur, Muzaffarpur')}
                           </p>
                         </td>
 

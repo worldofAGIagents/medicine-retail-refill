@@ -144,8 +144,18 @@ export default function DashboardPage() {
       {/* Top Banner / Onboard Trigger */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Pharmacy Refill Dashboard</h1>
-          <p className="text-xs sm:text-sm text-gray-500">Track chronic patient refill cycles, upcoming schedules &amp; WhatsApp reminders</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Manoj Medical Hall</h1>
+            <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+              📍 Sarfuddinpur, Muzaffarpur (843118)
+            </span>
+            <span className="text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+              10–20 KM Village Delivery
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            Village Chronic Patient Refill Cycles, Doorstep Medicine Delivery &amp; WhatsApp Alerts
+          </p>
         </div>
         <button
           onClick={() => setShowOnboardModal(true)}

@@ -29,15 +29,15 @@ export interface TemplateDefinition {
 export const DEFAULT_TEMPLATES: Record<string, string> = {
   preferredLanguage: 'hindi',
   hindiTemplate:
-    'नमस्ते {{name}} जी, आपकी नियमित दवाई {{medicine}} {{days}} में समाप्त होने वाली है। क्या हम आपके घर पर फ्री होम डिलीवरी भेज दें? रिप्लाई में YES लिखकर भेजें।\n\n- {{pharmacy}}, फोन: {{phone}}',
+    'नमस्ते {{name}} जी, आपकी नियमित दवाई {{medicine}} {{days}} में समाप्त होने वाली है। क्या हम आपके गाँव ({{address}}) में आज फ्री होम डिलीवरी भिजवा दें? कृपया हाँ या YES लिखकर रिप्लाई करें।\n\n- मनोज मेडिकल हॉल (Manoj Medical Hall), सरफुद्दीनपुर, गोपालपुर (मुज़फ़्फ़रपुर), फोन: {{phone}}',
   englishTemplate:
-    'Dear {{name}}, your chronic medicine supply of {{medicine}} will finish in {{days}}. To get free doorstep delivery, reply YES to confirm.\n\n- {{pharmacy}}, Ph: {{phone}}',
+    'Dear {{name}}, your chronic medicine supply of {{medicine}} will finish in {{days}}. Free village doorstep delivery available from Manoj Medical Hall, Sarfuddinpur. Reply YES to confirm delivery.\n\n- Manoj Medical Hall, Ph: {{phone}}',
   infantMilkTemplate:
-    'नमस्ते {{name}} जी, आपके बेबी का {{medicine}} लगभग समाप्त होने वाला है (शेष: {{days}})। बच्चे के पोषण में कोई रुकावट न आए, इसके लिए क्या हम नया टिन आज ही डिलीवर कर दें? कन्फर्म करने के लिए YES भेजें।\n\n- {{pharmacy}}',
+    'नमस्ते {{name}} जी, आपके बेबी का {{medicine}} लगभग समाप्त होने वाला है (शेष: {{days}})। बच्चे के पोषण में कोई रुकावट न आए, इसके लिए क्या हम नया टिन आज ही आपके गाँव पहुंचा दें? कन्फर्म करने के लिए YES भेजें।\n\n- मनोज मेडिकल हॉल (सरफुद्दीनपुर)',
   overdueTemplate:
-    '⚠️ अति आवश्यक: नमस्ते {{name}} जी, आपकी नियमित दवाई {{medicine}} समाप्त हो चुकी है! स्वास्थ्य सुरक्षा के लिए खुराक न छोड़ें। तुरंत डिलीवरी पाने के लिए YES भेजें या कॉल करें।\n\n- {{pharmacy}}, फोन: {{phone}}',
+    '⚠️ अति आवश्यक: नमस्ते {{name}} जी, आपकी नियमित दवाई {{medicine}} समाप्त हो चुकी है! स्वास्थ्य सुरक्षा के लिए खुराक न छोड़ें। तुरंत गाँव में डिलीवरी पाने के लिए YES भेजें या कॉल करें।\n\n- मनोज मेडिकल हॉल, सरफुद्दीनपुर, फोन: {{phone}}',
   outForDeliveryTemplate:
-    'नमस्ते {{name}} जी, आपका दवाई ऑर्डर डिस्पैच हो गया है और डिलीवरी राइडर जल्द ही आपके पते पर पहुंचेगा।\n\n- {{pharmacy}}, फोन: {{phone}}',
+    'नमस्ते {{name}} जी, आपकी दवाई मनोज मेडिकल हॉल (सरफुद्दीनपुर) से आपके गाँव के पते के लिए निकल चुकी है। कृपया डिलीवरी बॉय को कैश या UPI द्वारा भुगतान करें।\n\n- मनोज मेडिकल हॉल, फोन: {{phone}}',
 };
 
 export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
@@ -54,9 +54,9 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       medicine: 'Glycomet-GP 1mg (Strip of 15)',
       days: '3 दिन',
       date: '08 सितम्बर',
-      pharmacy: 'MedRefill Chemist',
+      pharmacy: 'Manoj Medical Hall',
       phone: '+91 98765 43210',
-      address: 'फ्लैट 402, शांति हाइट्स, सेक्टर 62',
+      address: 'गाँव: गोपालपुर, वार्ड 4 (निकट शिव मंदिर)',
     },
   },
   {
@@ -72,9 +72,9 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       medicine: 'Telma 40mg (Strip of 30)',
       days: '3 days',
       date: '08 Sep',
-      pharmacy: 'MedRefill Chemist',
+      pharmacy: 'Manoj Medical Hall',
       phone: '+91 98765 43210',
-      address: 'Flat 402, Shanti Heights, Sector 62',
+      address: 'Village: Gopalpur, Ward 4 (Near Shiv Mandir)',
     },
   },
   {
@@ -86,13 +86,13 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
     description: 'Special care reminder for parents whose infant formula tin (Nan Pro / Similac) is low.',
     sampleVars: {
-      name: 'Pooja Sharma',
+      name: 'पूजा कुमारी',
       medicine: 'Nan Pro Stage 1 (400g Tin)',
       days: '2 दिन (लगभग 3 स्कूप)',
       date: '07 सितम्बर',
-      pharmacy: 'MedRefill Chemist',
+      pharmacy: 'Manoj Medical Hall',
       phone: '+91 98765 43210',
-      address: 'House 12, Green Park Avenue',
+      address: 'गाँव: सरफुद्दीनपुर (निकट मिडिल स्कूल)',
     },
   },
   {
@@ -108,9 +108,9 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       medicine: 'Thyronorm 50mcg (Bottle of 120)',
       days: 'समाप्त हो चुकी है',
       date: 'आज',
-      pharmacy: 'MedRefill Chemist',
+      pharmacy: 'Manoj Medical Hall',
       phone: '+91 98765 43210',
-      address: 'B-21, Alpha Commercial Complex',
+      address: 'गाँव: बोचहाँ, मेन चौक',
     },
   },
   {
@@ -122,25 +122,25 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
     description: 'Sent to patient when their order has been packed and handed to delivery rider.',
     sampleVars: {
-      name: 'Vikram Mehta',
-      medicine: 'Amlong 5mg & Janumet 50/500mg',
+      name: 'विक्रम महतो',
+      medicine: 'Telvas 40mg & Glycomet GP 1mg',
       days: 'Dispatched',
       date: 'Today',
-      pharmacy: 'MedRefill Chemist',
+      pharmacy: 'Manoj Medical Hall',
       phone: '+91 98765 43210',
-      address: 'Tower 4, Flat 1102, Express Park',
+      address: 'गाँव: गायघाट (निकट पुलिया)',
     },
   },
 ];
 
 export const TEMPLATE_TAGS = [
   { tag: '{{name}}', label: 'Patient Name', example: 'Ramesh Sharma' },
-  { tag: '{{medicine}}', label: 'Medicine / Item', example: 'Glycomet GP 1mg' },
+  { tag: '{{medicine}}', label: 'Medicine / Item', example: 'Telvas 40mg' },
   { tag: '{{days}}', label: 'Days Remaining', example: '3 दिन / 3 days' },
   { tag: '{{date}}', label: 'Refill Date', example: '08 Sep' },
-  { tag: '{{pharmacy}}', label: 'Pharmacy Name', example: 'MedRefill Chemist' },
+  { tag: '{{pharmacy}}', label: 'Pharmacy Name', example: 'Manoj Medical Hall' },
   { tag: '{{phone}}', label: 'Pharmacy Phone', example: '+91 98765 43210' },
-  { tag: '{{address}}', label: 'Customer Address', example: 'Flat 402, Sector 62' },
+  { tag: '{{address}}', label: 'Village / Landmark', example: 'Gopalpur, Ward 4' },
 ];
 
 export function renderTemplate(template: string, vars: TemplateVariables): string {
@@ -153,7 +153,7 @@ export function renderTemplate(template: string, vars: TemplateVariables): strin
     '{{medicine}}': vars.medicine || 'Medicine',
     '{{days}}': vars.days !== undefined ? String(vars.days) : '2-3 days',
     '{{date}}': vars.date || '',
-    '{{pharmacy}}': vars.pharmacy || 'MedRefill Chemist',
+    '{{pharmacy}}': vars.pharmacy || 'Manoj Medical Hall',
     '{{phone}}': vars.phone || '',
     '{{address}}': vars.address || '',
   };

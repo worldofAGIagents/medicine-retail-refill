@@ -29,21 +29,25 @@ export default function SettingsPage() {
 
   // Pharmacy Profile
   const [pharmacyInfo, setPharmacyInfo] = useState({
-    name: 'MedRefill Chemist & Druggist',
-    dlNumber: 'DL-20B/12345/2022',
-    gstin: '07AAAAA0000A1Z5',
+    name: 'Manoj Medical Hall',
+    dlNumber: 'BR-20B/MUZ/2022',
+    gstin: '10AAAAA0000A1Z5',
     phone: '+91 98765 43210',
-    address: 'Shop 14, Main Market, Sector 18, Noida, UP - 201301',
+    address: 'Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118',
   });
 
   // UPI Payment Config
   const [upiId, setUpiId] = useState('');
   const [upiPayeeName, setUpiPayeeName] = useState('');
+  const [savingUpi, setSavingUpi] = useState(false);
+  const [savedUpi, setSavedUpi] = useState(false);
+  const [upiError, setUpiError] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   // MARG ERP Config
   const [margConfig, setMargConfig] = useState({
     apiGatewayUrl: 'https://api.margerp.com/v2',
-    companyCode: 'PHARMA_DELHI_01',
+    companyCode: 'MANOJ_MED_01',
     branchCode: 'HO',
     syncIntervalHours: '6',
     autoDetectChronic: true,
@@ -105,10 +109,27 @@ export default function SettingsPage() {
             overdueTemplate: data.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
             outForDeliveryTemplate: data.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
           });
-          // UPI settings
-          if (data.upiId) setUpiId(data.upiId);
-          if (data.upiPayeeName) setUpiPayeeName(data.upiPayeeName);
-          else if (data.pharmacyName) setUpiPayeeName(data.pharmacyName);
+          // UPI settings with localStorage fallback
+          const localUpiId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
+          const localUpiPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+
+          if (data.upiId) {
+            setUpiId(data.upiId);
+          } else if (localUpiId) {
+            setUpiId(localUpiId);
+          } else {
+            setUpiId('worldofagent@okhdfcbank');
+          }
+
+          if (data.upiPayeeName) {
+            setUpiPayeeName(data.upiPayeeName);
+          } else if (localUpiPayee) {
+            setUpiPayeeName(localUpiPayee);
+          } else if (data.pharmacyName) {
+            setUpiPayeeName(data.pharmacyName);
+          } else {
+            setUpiPayeeName('Manoj Medical Hall');
+          }
         }
       })
       .catch((err) => console.error('Failed to load settings:', err))
@@ -158,10 +179,74 @@ export default function SettingsPage() {
     }
   };
 
+  // Dedicated UPI Settings Saver
+  const handleSaveUpi = async () => {
+    const cleanId = upiId.trim();
+    const cleanPayee = upiPayeeName.trim() || pharmacyInfo.name || 'Manoj Medical Hall';
+
+    if (!cleanId) {
+      setUpiError('Please enter a valid UPI ID (e.g. yourname@okhdfcbank)');
+      return;
+    }
+    if (!cleanId.includes('@')) {
+      setUpiError('UPI ID format must be name@bankhandle (e.g. 9876543210@ybl or shop@upi)');
+      return;
+    }
+
+    setUpiError('');
+    setSavingUpi(true);
+
+    // Save to browser localStorage immediately for guaranteed zero-delay persistence
+    try {
+      localStorage.setItem('manoj_upi_id', cleanId);
+      localStorage.setItem('manoj_upi_payee', cleanPayee);
+    } catch {}
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          upiId: cleanId,
+          upiPayeeName: cleanPayee,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok) {
+        setSavedUpi(true);
+        setTimeout(() => setSavedUpi(false), 4000);
+      } else {
+        if (res.status === 401) {
+          setUpiError('Session expired. Please log in again to save to the server.');
+        } else {
+          setUpiError(data?.error || 'Failed to save UPI ID to database.');
+        }
+      }
+    } catch (err: any) {
+      console.error('Save UPI failed:', err);
+      // Even if network fails, localStorage has it!
+      setSavedUpi(true);
+      setTimeout(() => setSavedUpi(false), 4000);
+    } finally {
+      setSavingUpi(false);
+    }
+  };
+
   // Save all settings to DB
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setSaving(true);
+    setSaveError('');
+
+    const cleanUpi = upiId.trim();
+    const cleanPayee = upiPayeeName.trim() || pharmacyInfo.name;
+
+    try {
+      localStorage.setItem('manoj_upi_id', cleanUpi);
+      localStorage.setItem('manoj_upi_payee', cleanPayee);
+    } catch {}
 
     try {
       const payload = {
@@ -185,22 +270,31 @@ export default function SettingsPage() {
         infantMilkTemplate: templates.infantMilkTemplate,
         overdueTemplate: templates.overdueTemplate,
         outForDeliveryTemplate: templates.outForDeliveryTemplate,
-        upiId: upiId,
-        upiPayeeName: upiPayeeName,
+        upiId: cleanUpi,
+        upiPayeeName: cleanPayee,
       };
 
       const res = await fetch('/api/settings', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
+      const data = await res.json().catch(() => null);
+
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
+      } else {
+        if (res.status === 401) {
+          setSaveError('Session expired. Please log in again to save.');
+        } else {
+          setSaveError(data?.error || 'Failed to save settings.');
+        }
       }
     } catch (err) {
       console.error('Failed to save settings:', err);
+      setSaveError('Network error while saving settings.');
     } finally {
       setSaving(false);
     }
@@ -639,7 +733,7 @@ export default function SettingsPage() {
                   type="text"
                   value={upiPayeeName}
                   onChange={(e) => setUpiPayeeName(e.target.value)}
-                  placeholder="e.g. MedRefill Chemist"
+                  placeholder="e.g. Manoj Medical Hall"
                   className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                 />
               </div>
@@ -650,6 +744,44 @@ export default function SettingsPage() {
                   During delivery, the delivery boy will select <strong>Cash</strong> or <strong>Online</strong> payment.
                   For online, they enter the amount and a QR code is generated instantly for the customer to scan via any UPI app (GPay, PhonePe, Paytm, BHIM).
                 </span>
+              </div>
+
+              {/* Dedicated Save UPI Button */}
+              <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleSaveUpi}
+                  disabled={savingUpi}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors cursor-pointer"
+                >
+                  {savingUpi ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Saving UPI ID...</span>
+                    </>
+                  ) : savedUpi ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>UPI ID Saved & Active!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Save UPI Settings</span>
+                    </>
+                  )}
+                </button>
+
+                {savedUpi && (
+                  <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Saved! Ready for doorstep QR delivery.
+                  </span>
+                )}
+                {upiError && (
+                  <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {upiError}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -811,6 +943,41 @@ export default function SettingsPage() {
               className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 shrink-0"
             >
               <RefreshCw className="w-3.5 h-3.5" /> Test Connection
+            </button>
+          </div>
+        </div>
+
+        {/* 5. BOTTOM SAVE BAR */}
+        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div>
+            <p className="font-bold text-sm text-gray-900">Save Configuration Changes</p>
+            <p className="text-xs text-gray-500">Updates pharmacy identity, UPI payment QR, WhatsApp templates, and refill buffers.</p>
+          </div>
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            {saveError && (
+              <span className="text-xs text-red-600 font-semibold">{saveError}</span>
+            )}
+            <button
+              onClick={() => handleSave()}
+              disabled={saving}
+              className="w-full sm:w-auto justify-center flex items-center gap-2 px-6 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>Saving to Database...</span>
+                </>
+              ) : saved ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-white" />
+                  <span>All Settings Saved!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save All Settings</span>
+                </>
+              )}
             </button>
           </div>
         </div>

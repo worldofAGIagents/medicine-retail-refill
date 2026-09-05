@@ -8,9 +8,10 @@ export async function POST(request: Request) {
     const {
       name,
       phone,
+      altPhone,
       address,
       locality,
-      city = '',
+      city = 'Muzaffarpur',
       primaryCondition: rawCondition,
       condition,
       medicines: inputMedicines,
@@ -36,14 +37,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Please enter a valid 10-digit mobile number' }, { status: 400 });
     }
 
-    // 1. Create or update customer with primary condition
+    const cleanAltPhone = altPhone ? String(altPhone).replace(/[^0-9]/g, '').slice(-10) : null;
+
+    // 1. Create or update customer with primary condition and village details
     const customer = await db.customer.upsert({
       where: { phone: cleanPhone },
       update: {
         name,
+        altPhone: cleanAltPhone || undefined,
         address: address || undefined,
         locality: locality || undefined,
-        city: city || undefined,
+        city: city || 'Muzaffarpur',
         primaryCondition,
         whatsappEnabled: true,
         consentGiven: true,
@@ -51,9 +55,10 @@ export async function POST(request: Request) {
       create: {
         name,
         phone: cleanPhone,
-        address: address || 'Local Customer',
-        locality: locality || '',
-        city: city || '',
+        altPhone: cleanAltPhone,
+        address: address || 'Sarfuddinpur, Muzaffarpur',
+        locality: locality || 'Sarfuddinpur',
+        city: city || 'Muzaffarpur',
         primaryCondition,
         whatsappEnabled: true,
         consentGiven: true,

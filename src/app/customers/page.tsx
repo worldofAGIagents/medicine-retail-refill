@@ -20,7 +20,9 @@ interface Customer {
   id: string;
   name: string;
   phone: string;
+  altPhone?: string;
   address?: string;
+  locality?: string;
   city?: string;
   primaryCondition?: string | null;
   whatsappEnabled: boolean;
@@ -57,6 +59,8 @@ export default function CustomersPage() {
     const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
+      (c.altPhone && c.altPhone.includes(search)) ||
+      (c.locality && c.locality.toLowerCase().includes(search.toLowerCase())) ||
       (c.address && c.address.toLowerCase().includes(search.toLowerCase()));
 
     if (!matchesSearch) return false;
@@ -82,7 +86,7 @@ export default function CustomersPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Chronic Medicine Customers</h1>
-            <p className="text-xs sm:text-sm text-gray-500">Manage repeat customers for BP, Diabetes, Thyroid, and chronic refills</p>
+            <p className="text-xs sm:text-sm text-gray-500">Manoj Medical Hall • Sarfuddinpur, Muzaffarpur • 10–20 KM village repeat refills</p>
           </div>
           <button
             onClick={() => setShowOnboardModal(true)}
@@ -189,8 +193,15 @@ export default function CustomersPage() {
                                     {c.primaryCondition}
                                   </span>
                                 )}
+                                {c.locality && (
+                                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                                    📍 {c.locality}
+                                  </span>
+                                )}
                               </div>
-                              {c.city && <p className="text-xs text-gray-400">{c.city}</p>}
+                              <p className="text-xs text-gray-400">
+                                {c.locality ? `${c.locality}, ` : ''}{c.city || 'Muzaffarpur'}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -204,6 +215,12 @@ export default function CustomersPage() {
                               </span>
                             )}
                           </div>
+                          {c.altPhone && (
+                            <div className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
+                              <span className="text-gray-400 font-medium">Alt:</span>
+                              <span>{c.altPhone}</span>
+                            </div>
+                          )}
                           {c.address && (
                             <div className="flex items-center gap-1 text-xs text-gray-400 truncate max-w-xs mt-0.5">
                               <MapPin className="w-3 h-3 text-gray-300 shrink-0" />
@@ -296,9 +313,20 @@ export default function CustomersPage() {
                   </div>
                 )}
 
+                {viewCustomer.altPhone && (
+                  <div>
+                    <span className="text-xs text-gray-400 uppercase font-semibold">Family / Alternate Phone</span>
+                    <p className="text-gray-800 font-medium mt-0.5">{viewCustomer.altPhone}</p>
+                  </div>
+                )}
+
                 <div>
-                  <span className="text-xs text-gray-400 uppercase font-semibold">Delivery Address</span>
-                  <p className="text-gray-700 font-medium">{viewCustomer.address || 'Address not registered'}, {viewCustomer.city}</p>
+                  <span className="text-xs text-gray-400 uppercase font-semibold">Delivery Village &amp; Landmark</span>
+                  <p className="text-gray-700 font-medium mt-0.5">
+                    {viewCustomer.locality ? `Village: ${viewCustomer.locality}` : ''}
+                    {viewCustomer.address ? ` (${viewCustomer.address})` : ''}
+                    {viewCustomer.city ? `, ${viewCustomer.city}` : ', Muzaffarpur'}
+                  </p>
                 </div>
 
                 <div>

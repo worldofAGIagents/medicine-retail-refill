@@ -13,8 +13,8 @@ const plusJakarta = Plus_Jakarta_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'MedRefill Dashboard',
-  description: 'Pharmacy chronic medicine auto-refill & delivery dashboard - MARG ERP integrated',
+  title: 'Manoj Medical Hall — Sarfuddinpur, Muzaffarpur, Bihar',
+  description: 'Manoj Medical Hall, Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar (843118). Chronic medicine refill tracking and 10-20 KM village doorstep delivery.',
 }
 
 export default function RootLayout({

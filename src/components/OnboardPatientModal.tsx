@@ -45,10 +45,26 @@ const CONDITIONS = [
   { id: 'General', label: 'Other Chronic', color: 'bg-gray-50 text-gray-700 border-gray-200' },
 ];
 
+export const LOCAL_VILLAGES = [
+  'Sarfuddinpur',
+  'Gopalpur',
+  'Bochahan',
+  'Gaighat',
+  'Ladaura',
+  'Musahari',
+  'Sahila',
+  'Etwarpur',
+  'Madhurapur',
+  'Majhauli',
+  'Athar',
+];
+
 export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatientModalProps) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const [village, setVillage] = useState('Sarfuddinpur');
+  const [landmark, setLandmark] = useState('');
+  const [altPhone, setAltPhone] = useState('');
   const [condition, setCondition] = useState('Blood Pressure');
 
   // Multi-Medicine Prescriptions List
@@ -208,10 +224,14 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
 
     setSaving(true);
     try {
+      const villageAddress = `गाँव: ${village.trim()}${landmark.trim() ? ', ' + landmark.trim() : ''}`;
       const payload = {
         name: name.trim(),
         phone: cleanPhone,
-        address: address.trim(),
+        altPhone: altPhone.trim() || undefined,
+        address: villageAddress,
+        locality: village.trim(),
+        city: 'Muzaffarpur',
         primaryCondition: condition,
         medicines: prescribedMeds.map((item) => {
           const packUnits = item.medicine.unitsPerPack > 0 ? item.medicine.unitsPerPack : 10;
@@ -256,7 +276,9 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         // Reset form
         setName('');
         setPhone('');
-        setAddress('');
+        setVillage('Sarfuddinpur');
+        setLandmark('');
+        setAltPhone('');
         setPrescribedMeds([]);
         setMedSearch('');
         setSuccessMsg('');
@@ -341,15 +363,67 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
               </div>
             </div>
 
+            {/* Village & Landmark for 10-20 KM Delivery */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">गाँव / Village Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sarfuddinpur, Gopalpur, Bochahan"
+                  value={village}
+                  onChange={(e) => setVillage(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                />
+                <div className="flex items-center gap-1 flex-wrap pt-1.5">
+                  {LOCAL_VILLAGES.slice(0, 5).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setVillage(v)}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border transition-all ${
+                        village === v
+                          ? 'bg-teal-700 text-white border-teal-800'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">टोला / वार्ड / लैंडमार्क (Landmark)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Ward 4, Near Shiv Mandir, Pulia"
+                  value={landmark}
+                  onChange={(e) => setLandmark(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                />
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Used by delivery boy to locate patient in village
+                </p>
+              </div>
+            </div>
+
+            {/* Alternate Family Contact */}
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Delivery Address / Locality</label>
-              <input
-                type="text"
-                placeholder="House No, Apartment, Sector / Colony, City"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-              />
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                वैकल्पिक मोबाइल / Alternate Family Phone (बेटा/भाई/केयरटेकर) - Optional
+              </label>
+              <div className="relative max-w-sm">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-gray-400">+91</span>
+                <input
+                  type="tel"
+                  maxLength={10}
+                  placeholder="9876543210"
+                  value={altPhone}
+                  onChange={(e) => setAltPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                  className="w-full pl-11 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none font-mono"
+                />
+              </div>
             </div>
           </div>
 

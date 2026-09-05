@@ -28,7 +28,7 @@ export function QuickQrModal({
   const [note, setNote] = useState<string>(initialNote);
   const [phone, setPhone] = useState<string>(customerPhone);
   const [upiId, setUpiId] = useState<string>('');
-  const [payeeName, setPayeeName] = useState<string>('Retailink Chemist');
+  const [payeeName, setPayeeName] = useState<string>('Manoj Medical Hall');
   const [copied, setCopied] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
@@ -42,13 +42,20 @@ export function QuickQrModal({
 
   // Load shop UPI settings
   useEffect(() => {
+    try {
+      const localId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
+      const localPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+      if (localId) setUpiId(localId);
+      if (localPayee) setPayeeName(localPayee);
+    } catch {}
+
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {
         if (data?.upiId) {
           setUpiId(data.upiId);
         } else {
-          setUpiId('worldofagent@okhdfcbank');
+          setUpiId((prev) => prev || 'worldofagent@okhdfcbank');
         }
         if (data?.upiPayeeName || data?.pharmacyName) {
           setPayeeName(data.upiPayeeName || data.pharmacyName);
@@ -56,10 +63,10 @@ export function QuickQrModal({
         setLoadingSettings(false);
       })
       .catch(() => {
-        setUpiId('worldofagent@okhdfcbank');
+        setUpiId((prev) => prev || 'worldofagent@okhdfcbank');
         setLoadingSettings(false);
       });
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
