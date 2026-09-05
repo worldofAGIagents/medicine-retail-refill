@@ -4,8 +4,10 @@ import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect } from 'react';
 import {
   Printer, Download, Calendar, Phone, MapPin, CheckCircle2, Clock,
-  AlertTriangle, Filter, ChevronRight, Package, UserCheck, Milk, Pill
+  AlertTriangle, Filter, ChevronRight, Package, UserCheck, Milk, Pill,
+  QrCode
 } from 'lucide-react';
+import { QuickQrModal } from '@/components/QuickQrModal';
 
 interface RefillItem {
   id: string;
@@ -48,6 +50,12 @@ export default function DeliverySheetPage() {
   const [dlNumber, setDlNumber] = useState('DL-20B/12345/2022');
   const [packedItems, setPackedItems] = useState<Record<string, boolean>>({});
   const [deliveredItems, setDeliveredItems] = useState<Record<string, boolean>>({});
+  const [qrModalItem, setQrModalItem] = useState<{
+    amount: number;
+    name: string;
+    phone: string;
+    note: string;
+  } | null>(null);
 
   useEffect(() => {
     // Load refills
@@ -163,6 +171,18 @@ export default function DeliverySheetPage() {
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button
+              onClick={() => setQrModalItem({
+                amount: 0,
+                name: '',
+                phone: '',
+                note: 'Doorstep Collection',
+              })}
+              className="bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
+              title="Instant Dynamic UPI QR Generator"
+            >
+              <QrCode size={16} /> ⚡ Instant QR
+            </button>
             <button
               onClick={handlePrint}
               className="flex-1 sm:flex-none bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-colors"
@@ -292,6 +312,7 @@ export default function DeliverySheetPage() {
                     <th className="py-2.5 px-3">Item &amp; Packaging Size</th>
                     <th className="py-2.5 px-3 text-center">Qty to Deliver</th>
                     <th className="py-2.5 px-3 text-right">Collect (₹)</th>
+                    <th className="py-2.5 px-2 text-center w-16 print:hidden">UPI QR</th>
                     <th className="py-2.5 px-3 text-center">Stock Status</th>
                     <th className="py-2.5 px-2 text-center w-16">Packed</th>
                     <th className="py-2.5 px-2 text-center w-16">Delivered</th>
@@ -363,6 +384,23 @@ export default function DeliverySheetPage() {
                         {/* Collect (₹) */}
                         <td className="py-2 px-3 text-right font-extrabold text-gray-900 text-sm">
                           ₹{itemBill.toLocaleString('en-IN')}
+                        </td>
+
+                        {/* UPI QR Trigger Button */}
+                        <td className="py-2 px-2 text-center print:hidden">
+                          <button
+                            type="button"
+                            onClick={() => setQrModalItem({
+                              amount: itemBill,
+                              name: item.customer.name,
+                              phone: item.customer.phone,
+                              note: `${item.medicine.name} (${packs} ${isMilk ? 'Tin' : 'Strip'})`,
+                            })}
+                            className="p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 hover:text-teal-900 border border-teal-200 transition-colors inline-flex items-center justify-center"
+                            title={`Generate ₹${itemBill} UPI QR for ${item.customer.name}`}
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </button>
                         </td>
 
                         {/* Stock In Store */}
@@ -437,6 +475,18 @@ export default function DeliverySheetPage() {
           </div>
         </div>
       </div>
+
+      {/* Dynamic UPI QR Modal for Doorstep Delivery */}
+      {qrModalItem && (
+        <QuickQrModal
+          isOpen={!!qrModalItem}
+          onClose={() => setQrModalItem(null)}
+          initialAmount={qrModalItem.amount}
+          customerName={qrModalItem.name}
+          customerPhone={qrModalItem.phone}
+          initialNote={qrModalItem.note}
+        />
+      )}
     </DashboardLayout>
   );
 }
