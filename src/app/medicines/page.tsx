@@ -1,8 +1,8 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layout';
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Pill, AlertTriangle, CheckCircle, X, Package } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Plus, Pill, AlertTriangle, CheckCircle, X, Package, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 
 interface MedicineItem {
   id: string;
@@ -18,6 +18,7 @@ interface MedicineItem {
   isChronicMed: boolean;
   margItemCode?: string;
   manufacturer?: string;
+  saltComposition?: string;
 }
 
 export default function MedicinesPage() {
@@ -26,7 +27,12 @@ export default function MedicinesPage() {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [chronicOnly, setChronicOnly] = useState(true);
+  const [chronicOnly, setChronicOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalMedicines, setTotalMedicines] = useState(0);
+
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // New Medicine Form State
   const [formData, setFormData] = useState({
@@ -44,20 +50,56 @@ export default function MedicinesPage() {
     margItemCode: '',
   });
 
-  const loadMedicines = () => {
+  const loadMedicines = (targetPage = page, query = search, cat = category, chronic = chronicOnly) => {
     setLoading(true);
-    fetch('/api/medicines')
+    const params = new URLSearchParams({
+      page: String(targetPage),
+      limit: '50',
+    });
+    if (query.trim()) params.set('q', query.trim());
+    if (cat && cat !== 'All') params.set('category', cat);
+    if (chronic) params.set('chronic', 'true');
+
+    fetch(`/api/medicines?${params.toString()}`)
       .then((res) => res.json())
-      .then((data) => {
-        setMedicines(Array.isArray(data) ? data : []);
+      .then((resData) => {
+        if (Array.isArray(resData)) {
+          setMedicines(resData);
+          setTotalMedicines(resData.length);
+          setTotalPages(1);
+        } else if (resData && Array.isArray(resData.data)) {
+          setMedicines(resData.data);
+          setTotalMedicines(resData.total || 0);
+          setTotalPages(resData.totalPages || 1);
+          setPage(resData.page || targetPage);
+        } else {
+          setMedicines([]);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadMedicines();
-  }, []);
+    loadMedicines(1, search, category, chronicOnly);
+  }, [category, chronicOnly]);
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setPage(1);
+      loadMedicines(1, val, category, chronicOnly);
+    }, 300);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
+      loadMedicines(newPage, search, category, chronicOnly);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleAddMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,30 +133,14 @@ export default function MedicinesPage() {
           isChronicMed: true,
           margItemCode: '',
         });
-        loadMedicines();
+        loadMedicines(1, search, category, chronicOnly);
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  const categories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart'];
-
-  const filteredMedicines = medicines.filter((m) => {
-    const matchesSearch =
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.genericName.toLowerCase().includes(search.toLowerCase()) ||
-      (m.manufacturer && m.manufacturer.toLowerCase().includes(search.toLowerCase()));
-
-    if (!matchesSearch) return false;
-    if (chronicOnly && !m.isChronicMed) return false;
-    if (category === 'All') return true;
-
-    const catQuery = category.toLowerCase();
-    const medCat = m.category.toLowerCase();
-    if (catQuery === 'bp') return medCat.includes('bp') || medCat.includes('blood pressure');
-    return medCat.includes(catQuery);
-  });
+  const categories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart', 'Respiratory', 'Gastric', 'Tablet / Capsule', 'Syrup'];
 
   return (
     <DashboardLayout>
@@ -122,14 +148,19 @@ export default function MedicinesPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Pharmaceutical Inventory & Pack Sizes</h1>
-            <p className="text-xs sm:text-sm text-gray-500">
-              Packaging sizes (tablets/strip, strips/box) and stock levels synced with MARG ERP
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Pharmaceutical Inventory &amp; Stock</h1>
+              <span className="bg-teal-100 text-teal-800 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                {totalMedicines.toLocaleString()} items
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+              Live shop stock, pack sizes, MRP, and chronic classifications synced with MARG ERP
             </p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            className="w-full sm:w-auto justify-center bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors"
+            className="w-full sm:w-auto justify-center bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors cursor-pointer"
           >
             <Plus size={18} /> Add Medicine
           </button>
@@ -137,14 +168,17 @@ export default function MedicinesPage() {
 
         {/* Filter bar */}
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-          <div className="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto">
+          <div className="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto scrollbar-none">
             {categories.map((c) => (
               <button
                 key={c}
-                onClick={() => setCategory(c)}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                onClick={() => {
+                  setCategory(c);
+                  setPage(1);
+                }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                   category === c
-                    ? 'bg-teal-700 text-white shadow-sm'
+                    ? 'bg-teal-700 text-white shadow-xs'
                     : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
               >
@@ -158,20 +192,23 @@ export default function MedicinesPage() {
               <input
                 type="checkbox"
                 checked={chronicOnly}
-                onChange={(e) => setChronicOnly(e.target.checked)}
-                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500"
+                onChange={(e) => {
+                  setChronicOnly(e.target.checked);
+                  setPage(1);
+                }}
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
               />
               <span>Chronic Meds Only</span>
             </label>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-2.5 text-gray-400" size={17} />
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
               <input
                 type="text"
-                placeholder="Search name, salt, company..."
+                placeholder="Search name, salt, company, code..."
                 className="pl-9 pr-4 py-2 text-xs bg-white border border-gray-200 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
           </div>
@@ -181,91 +218,139 @@ export default function MedicinesPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-gray-400">Loading medicines...</div>
-          ) : filteredMedicines.length === 0 ? (
+          ) : medicines.length === 0 ? (
             <div className="p-12 text-center text-gray-400">
               <Pill className="w-10 h-10 mx-auto mb-2 text-gray-300" />
               <p className="font-semibold text-gray-700">No medicines found</p>
-              <p className="text-xs text-gray-400 mt-1">Try toggling filters or import from MARG</p>
+              <p className="text-xs text-gray-400 mt-1">Try adjusting your search terms or filters</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[750px] text-left text-sm border-collapse">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <th className="py-3.5 px-6">Medicine & Brand</th>
-                    <th className="py-3.5 px-4">Salt / Generic</th>
-                    <th className="py-3.5 px-4">Condition</th>
-                    <th className="py-3.5 px-4">Packaging Size</th>
-                    <th className="py-3.5 px-4">MRP (₹)</th>
-                    <th className="py-3.5 px-4">Stock In Hand</th>
-                    <th className="py-3.5 px-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredMedicines.map((m) => {
-                    let statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                        <CheckCircle className="w-3 h-3" /> In Stock
-                      </span>
-                    );
-
-                    if (m.currentStock === 0) {
-                      statusBadge = (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
-                          <AlertTriangle className="w-3 h-3" /> Out of Stock
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[750px] text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      <th className="py-3.5 px-6">Medicine &amp; Brand</th>
+                      <th className="py-3.5 px-4">Salt / Generic</th>
+                      <th className="py-3.5 px-4">Condition</th>
+                      <th className="py-3.5 px-4">Packaging Size</th>
+                      <th className="py-3.5 px-4">MRP (₹)</th>
+                      <th className="py-3.5 px-4">Stock In Hand</th>
+                      <th className="py-3.5 px-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {medicines.map((m) => {
+                      let statusBadge = (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                          <CheckCircle className="w-3 h-3" /> In Stock
                         </span>
                       );
-                    } else if (m.currentStock <= m.reorderLevel) {
-                      statusBadge = (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-                          <AlertTriangle className="w-3 h-3" /> Low Stock
-                        </span>
-                      );
-                    }
 
-                    return (
-                      <tr key={m.id} className="hover:bg-gray-50/60 transition-colors">
-                        <td className="py-3.5 px-6">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
-                              <Pill className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <p className="font-semibold text-gray-900">{m.name}</p>
-                              <p className="text-xs text-gray-400">{m.manufacturer || 'Indian Pharma'}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-gray-600 text-xs font-medium">
-                          {m.genericName}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-700">
-                            {m.category}
+                      if (m.currentStock === 0) {
+                        statusBadge = (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                            <AlertTriangle className="w-3 h-3" /> Out of Stock
                           </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <p className="text-xs font-semibold text-gray-800">
-                            {m.unitsPerPack} {m.packagingType === 'bottle' ? 'tabs/bottle' : 'tabs/strip'}
-                          </p>
-                          <p className="text-[10px] text-gray-400">{m.packsPerBox} strips/box</p>
-                        </td>
-                        <td className="py-3.5 px-4 font-bold text-gray-900 text-sm">
-                          ₹{m.mrp}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-bold text-gray-800 text-sm">{m.currentStock}</span>
-                          <span className="text-xs text-gray-400 ml-1">units</span>
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          {statusBadge}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        );
+                      } else if (m.currentStock <= m.reorderLevel) {
+                        statusBadge = (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            <AlertTriangle className="w-3 h-3" /> Low Stock
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <tr key={m.id} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="py-3.5 px-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+                                <Pill className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900 leading-tight">{m.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-xs text-gray-400">{m.manufacturer || 'Indian Pharma'}</span>
+                                  {m.margItemCode && (
+                                    <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">
+                                      {m.margItemCode}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-gray-600 text-xs font-medium max-w-[200px] truncate">
+                            {m.genericName || m.saltComposition || '-'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                              m.category === 'Infant Milk' ? 'bg-pink-50 text-pink-700 border border-pink-200' :
+                              m.category === 'Diabetes' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                              m.category === 'Blood Pressure' || m.category === 'BP' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                              m.category === 'Thyroid' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                              'bg-gray-50 text-gray-700 border border-gray-200'
+                            }`}>
+                              {m.category}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <p className="text-xs font-semibold text-gray-800">
+                              {m.unitsPerPack} {m.packagingType === 'tin' ? 'g Tin' : m.packagingType === 'bottle' ? 'tabs/bottle' : 'tabs/strip'}
+                            </p>
+                            <p className="text-[10px] text-gray-400">{m.packsPerBox} per box</p>
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-gray-900 text-sm">
+                            ₹{m.mrp}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-gray-800 text-sm">{m.currentStock}</span>
+                            <span className="text-xs text-gray-400 ml-1">units</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            {statusBadge}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50 text-xs text-gray-500">
+                <div>
+                  Showing <strong className="text-gray-900">{(page - 1) * 50 + 1}</strong> to{' '}
+                  <strong className="text-gray-900">{Math.min(page * 50, totalMedicines)}</strong> of{' '}
+                  <strong className="text-gray-900">{totalMedicines.toLocaleString()}</strong> products
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePageChange(page - 1)}
+                    disabled={page <= 1}
+                    className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  <span className="px-3 py-1 font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg">
+                    Page {page} of {totalPages}
+                  </span>
+
+                  <button
+                    onClick={() => handlePageChange(page + 1)}
+                    disabled={page >= totalPages}
+                    className="p-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Next Page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
 

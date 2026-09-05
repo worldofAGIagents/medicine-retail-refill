@@ -15,24 +15,39 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
       }
 
-      const text = await file.text();
-      const results = await parseMargCSV(text, type);
+      const fileName = file.name.toLowerCase();
+      let records: any[] = [];
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const firstSheet = workbook.SheetNames[0];
+        records = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet]);
+      } else {
+        const text = await file.text();
+        const Papa = (await import('papaparse')).default;
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+        records = result.data as any[];
+      }
+
+      const results = await parseMargCSV(records, type);
       return NextResponse.json({ success: true, results });
     } else {
       // JSON body
       const body = await request.json();
       const { type = 'medicines', data, csvText } = body;
       
-      let text = csvText;
-      if (!text && data && Array.isArray(data)) {
-        text = Papa.unparse(data);
+      let input: any = data;
+      if (!input && csvText) {
+        input = csvText;
       }
 
-      if (!text) {
-        return NextResponse.json({ error: 'No data or CSV text provided' }, { status: 400 });
+      if (!input) {
+        return NextResponse.json({ error: 'No data or CSV/Excel provided' }, { status: 400 });
       }
 
-      const results = await parseMargCSV(text, type);
+      const results = await parseMargCSV(input, type);
       return NextResponse.json({ success: true, results });
     }
   } catch (error: any) {

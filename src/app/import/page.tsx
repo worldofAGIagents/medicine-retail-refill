@@ -3,7 +3,8 @@
 import { DashboardLayout } from '@/components/layout';
 import React, { useState } from 'react';
 import Papa from 'papaparse';
-import { UploadCloud, Pill, History, Box, FileText, CheckCircle, AlertCircle, Sparkles, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { UploadCloud, Pill, History, Box, FileText, CheckCircle, AlertCircle, Sparkles, Download, FileSpreadsheet } from 'lucide-react';
 
 export default function ImportPage() {
   const [activeTab, setActiveTab] = useState<'medicines' | 'sales' | 'stock'>('medicines');
@@ -21,17 +22,38 @@ export default function ImportPage() {
       setFile(selectedFile);
       setSuccess(false);
       setErrorMsg('');
-      
-      Papa.parse(selectedFile, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function (results) {
-          if (results.data.length > 0) {
-            setHeaders(Object.keys(results.data[0] as object));
-            setCsvData(results.data);
+
+      const fileName = selectedFile.name.toLowerCase();
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const bstr = evt.target?.result;
+            const wb = XLSX.read(bstr, { type: 'binary' });
+            const firstSheet = wb.SheetNames[0];
+            const ws = wb.Sheets[firstSheet];
+            const data: any[] = XLSX.utils.sheet_to_json(ws);
+            if (data.length > 0) {
+              setHeaders(Object.keys(data[0] as object));
+              setCsvData(data);
+            }
+          } catch (err: any) {
+            setErrorMsg('Failed to parse Excel file: ' + err.message);
           }
-        },
-      });
+        };
+        reader.readAsBinaryString(selectedFile);
+      } else {
+        Papa.parse(selectedFile, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function (results) {
+            if (results.data.length > 0) {
+              setHeaders(Object.keys(results.data[0] as object));
+              setCsvData(results.data);
+            }
+          },
+        });
+      }
     }
   };
 
@@ -165,17 +187,17 @@ export default function ImportPage() {
             <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:bg-gray-50/50 transition-colors">
               <UploadCloud size={44} className="mx-auto text-teal-600 mb-3" />
               <h3 className="text-base font-bold text-gray-900 mb-1">
-                Upload MARG Export (.csv)
+                Upload MARG Export (.xlsx, .xls, .csv)
               </h3>
               <p className="text-xs text-gray-500 mb-4">
-                Drag and drop your exported CSV file here, or click to choose file
+                Drag and drop your exported Excel or CSV file here, or click to choose file
               </p>
-              <input type="file" id="fileUpload" accept=".csv" className="hidden" onChange={handleFileUpload} />
+              <input type="file" id="fileUpload" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleFileUpload} />
               <label
                 htmlFor="fileUpload"
                 className="inline-block bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition-colors"
               >
-                Browse CSV Files
+                Browse Excel / CSV Files
               </label>
             </div>
 

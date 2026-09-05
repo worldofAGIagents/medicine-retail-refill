@@ -90,6 +90,7 @@ export default function PrescriptionsPage() {
 
   const custRef = useRef<HTMLDivElement>(null);
   const medRef = useRef<HTMLDivElement>(null);
+  const medSearchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadPrescriptions = () => {
     setLoading(true);
@@ -102,6 +103,20 @@ export default function PrescriptionsPage() {
       .catch(() => setLoading(false));
   };
 
+  const fetchMedicinesForDropdown = (query = '', cat = 'All') => {
+    const params = new URLSearchParams({ limit: '60' });
+    if (query.trim()) params.set('q', query.trim());
+    if (cat && cat !== 'All') params.set('category', cat);
+
+    fetch(`/api/medicines?${params.toString()}`)
+      .then((res) => res.json())
+      .then((resData) => {
+        const list = Array.isArray(resData) ? resData : (resData?.data || []);
+        setMedicines(list);
+      })
+      .catch(console.error);
+  };
+
   useEffect(() => {
     loadPrescriptions();
 
@@ -110,10 +125,7 @@ export default function PrescriptionsPage() {
       .then((data) => setCustomers(Array.isArray(data) ? data : []))
       .catch(console.error);
 
-    fetch('/api/medicines')
-      .then((res) => res.json())
-      .then((data) => setMedicines(Array.isArray(data) ? data : []))
-      .catch(console.error);
+    fetchMedicinesForDropdown('', 'All');
   }, []);
 
   // Close dropdowns on outside click
@@ -224,17 +236,18 @@ export default function PrescriptionsPage() {
     }
   };
 
-  // Filter medicines in searchable combobox
-  const filteredMedicinesForCombobox = medicines.filter((m) => {
-    const matchesSearch =
-      m.name.toLowerCase().includes(medSearch.toLowerCase()) ||
-      m.genericName.toLowerCase().includes(medSearch.toLowerCase()) ||
-      m.category.toLowerCase().includes(medSearch.toLowerCase());
-
-    if (!matchesSearch) return false;
-    if (medCategoryFilter === 'All') return true;
-    return m.category.toLowerCase().includes(medCategoryFilter.toLowerCase());
-  });
+  // Filter medicines in searchable combobox (capped at top 40 for optimal rendering)
+  const filteredMedicinesForCombobox = medicines
+    .filter((m) => {
+      if (!medSearch.trim()) return true;
+      const q = medSearch.toLowerCase();
+      return (
+        m.name.toLowerCase().includes(q) ||
+        (m.genericName && m.genericName.toLowerCase().includes(q)) ||
+        (m.category && m.category.toLowerCase().includes(q))
+      );
+    })
+    .slice(0, 40);
 
   // Filter customers in searchable combobox
   const filteredCustomersForCombobox = customers.filter((c) =>
@@ -382,12 +395,15 @@ export default function PrescriptionsPage() {
 
                     {/* Category Filter Pills inside Combobox */}
                     <div className="flex gap-1.5 overflow-x-auto pb-1.5 mb-1.5">
-                      {['All', 'Diabetes', 'BP', 'Thyroid', 'Infant Milk', 'Cholesterol'].map((cat) => (
+                      {['All', 'Diabetes', 'BP', 'Thyroid', 'Infant Milk', 'Cholesterol', 'Heart', 'Respiratory'].map((cat) => (
                         <button
                           key={cat}
                           type="button"
-                          onClick={() => setMedCategoryFilter(cat)}
-                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors ${
+                          onClick={() => {
+                            setMedCategoryFilter(cat);
+                            fetchMedicinesForDropdown(medSearch, cat);
+                          }}
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                             medCategoryFilter === cat
                               ? 'bg-teal-700 text-white'
                               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -402,12 +418,20 @@ export default function PrescriptionsPage() {
                       <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                       <input
                         type="text"
-                        placeholder="Search by brand (Glycomet, Nan Pro, Telma) or salt..."
+                        placeholder="Type to search from 9,000+ medicines (e.g. Aptamil, Glycomet, Telma)..."
                         value={medSearch}
-                        onFocus={() => setMedDropdownOpen(true)}
-                        onChange={(e) => {
-                          setMedSearch(e.target.value);
+                        onFocus={() => {
                           setMedDropdownOpen(true);
+                          if (medicines.length === 0) fetchMedicinesForDropdown(medSearch, medCategoryFilter);
+                        }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMedSearch(val);
+                          setMedDropdownOpen(true);
+                          if (medSearchTimerRef.current) clearTimeout(medSearchTimerRef.current);
+                          medSearchTimerRef.current = setTimeout(() => {
+                            fetchMedicinesForDropdown(val, medCategoryFilter);
+                          }, 250);
                         }}
                         className="w-full pl-9 pr-8 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                       />
@@ -417,8 +441,9 @@ export default function PrescriptionsPage() {
                           onClick={() => {
                             setMedicineId('');
                             setMedSearch('');
+                            fetchMedicinesForDropdown('', medCategoryFilter);
                           }}
-                          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 cursor-pointer"
                         >
                           <X size={16} />
                         </button>
