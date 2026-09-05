@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { calculateRefill } from '@/lib/refill-engine';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export async function GET(request: Request) {
   const prescriptions = await db.prescription.findMany({
     where: { isActive: true, lastPurchaseDate: { not: null }, lastPurchaseQty: { not: null } },
     include: { customer: true, medicine: true }

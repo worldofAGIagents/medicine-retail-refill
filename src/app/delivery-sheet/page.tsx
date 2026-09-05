@@ -5,7 +5,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Printer, Download, Calendar, Phone, MapPin, CheckCircle2, Clock,
   AlertTriangle, Filter, ChevronRight, Package, UserCheck, Milk, Pill,
-  QrCode
+  QrCode, Send, Share2, Copy, Check, X, ExternalLink, MessageSquare,
+  Navigation
 } from 'lucide-react';
 import { QuickQrModal } from '@/components/QuickQrModal';
 
@@ -21,9 +22,10 @@ interface RefillItem {
     id: string;
     name: string;
     phone: string;
-    address?: string;
-    locality?: string;
-    city?: string;
+    altPhone?: string | null;
+    address?: string | null;
+    locality?: string | null;
+    city?: string | null;
   };
   medicine: {
     id: string;
@@ -49,6 +51,10 @@ export default function DeliverySheetPage() {
   const [address, setAddress] = useState('Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118');
   const [dlNumber, setDlNumber] = useState('BR-20B/MUZ/2022');
   const [riderName, setRiderName] = useState('Rider #1 (Village Route)');
+  const [riderPhone, setRiderPhone] = useState('');
+  const [shopPhone, setShopPhone] = useState('+91 98765 43210');
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [copiedRoute, setCopiedRoute] = useState(false);
   const [selectedVillage, setSelectedVillage] = useState<string>('all');
   const [packedItems, setPackedItems] = useState<Record<string, boolean>>({});
   const [deliveredItems, setDeliveredItems] = useState<Record<string, boolean>>({});
@@ -60,6 +66,13 @@ export default function DeliverySheetPage() {
   } | null>(null);
 
   useEffect(() => {
+    try {
+      const savedRider = localStorage.getItem('manoj_rider_name');
+      const savedPhone = localStorage.getItem('manoj_rider_phone');
+      if (savedRider) setRiderName(savedRider);
+      if (savedPhone) setRiderPhone(savedPhone);
+    } catch {}
+
     // Load refills
     fetch('/api/refills')
       .then((res) => res.json())
@@ -76,6 +89,7 @@ export default function DeliverySheetPage() {
         if (data?.pharmacyName) setPharmacyName(data.pharmacyName);
         if (data?.address) setAddress(data.address);
         if (data?.dlNumber) setDlNumber(data.dlNumber);
+        if (data?.phone) setShopPhone(data.phone);
       })
       .catch(() => {});
   }, []);
@@ -130,6 +144,73 @@ export default function DeliverySheetPage() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Generate WhatsApp message formatted for rider delivery run
+  const generateRiderRouteMessage = (items: RefillItem[], village: string, rider: string) => {
+    const totalColl = items.reduce((acc, item) => {
+      const packs = Math.ceil(item.lastPurchaseQty / (item.medicine.unitsPerPack || 10));
+      return acc + item.medicine.mrp * packs;
+    }, 0);
+
+    const routeLabel = village === 'all' ? 'सभी गाँव (All 10–20 KM Villages)' : `गाँव: ${village}`;
+
+    let msg = `🚴 *${pharmacyName} - डिलीवरी रूट शीट*\n`;
+    msg += `📅 तारीख: ${todayDateStr}\n`;
+    msg += `👤 राइडर: ${rider || 'डिलीवरी बॉय'}\n`;
+    msg += `📍 रूट: ${routeLabel}\n`;
+    msg += `📦 कुल डिलीवरी: ${items.length} मरीज | कुल वसूली: ₹${totalColl.toLocaleString('en-IN')}\n\n`;
+    msg += `─────────────────────────\n`;
+
+    items.forEach((item, idx) => {
+      const packs = Math.ceil(item.lastPurchaseQty / (item.medicine.unitsPerPack || 10));
+      const bill = item.medicine.mrp * packs;
+      const isMilk = item.medicine.category === 'Infant Milk';
+
+      msg += `${idx + 1}️⃣ *${item.customer.name}*\n`;
+      msg += `📍 पता: ${item.customer.address || (item.customer.locality ? `गाँव: ${item.customer.locality}, मुज़फ़्फ़रपुर` : 'सरफुद्दीनपुर')}\n`;
+      msg += `💊 दवाई: ${item.medicine.name} (${packs} ${isMilk ? 'Tin' : 'पत्ता'})\n`;
+      msg += `💰 वसूली बिल: ₹${bill} (कैश / UPI)\n`;
+      msg += `📞 मरीज फोन: ${item.customer.phone}\n`;
+      if (item.customer.altPhone) {
+        msg += `👨‍👦 बेटा/परिवार: ${item.customer.altPhone}\n`;
+      }
+      msg += `\n`;
+    });
+
+    msg += `─────────────────────────\n`;
+    msg += `⚠️ *राइडर के लिए जरूरी निर्देश*:\n`;
+    msg += `1. घर जाने से पहले मरीज या उनके बेटे को फोन करके कन्फर्म कर लें।\n`;
+    msg += `2. ऑनलाइन UPI पेमेंट के लिए ग्राहक को डायनामिक QR दिखाएँ:\n`;
+    msg += `   👉 https://www.retailink.shop/quick-qr\n`;
+    msg += `3. कोई भी परेशानी हो तो तुरंत दुकान पर बात करें: ${shopPhone}\n`;
+
+    return msg;
+  };
+
+  const handleSendToRider = () => {
+    const cleanPhone = riderPhone.replace(/[^0-9]/g, '');
+    if (!cleanPhone) {
+      alert('कृपया राइडर का व्हाट्सएप नंबर दर्ज करें (Please enter rider WhatsApp number)');
+      return;
+    }
+    const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const msg = generateRiderRouteMessage(displayedItems, selectedVillage, riderName);
+
+    try {
+      localStorage.setItem('manoj_rider_name', riderName);
+      localStorage.setItem('manoj_rider_phone', riderPhone);
+    } catch {}
+
+    const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleCopyRoute = () => {
+    const msg = generateRiderRouteMessage(displayedItems, selectedVillage, riderName);
+    navigator.clipboard.writeText(msg);
+    setCopiedRoute(true);
+    setTimeout(() => setCopiedRoute(false), 2500);
   };
 
   // Calculate totals
@@ -189,7 +270,14 @@ export default function DeliverySheetPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <button
+              onClick={() => setShowDispatchModal(true)}
+              className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              title="Share this route directly to rider on WhatsApp"
+            >
+              <Send size={15} /> 📲 Share Route to Rider
+            </button>
             <button
               onClick={() => setQrModalItem({
                 amount: 0,
@@ -197,16 +285,16 @@ export default function DeliverySheetPage() {
                 phone: '',
                 note: 'Doorstep Collection',
               })}
-              className="bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
+              className="bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white px-3.5 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               title="Instant Dynamic UPI QR Generator"
             >
-              <QrCode size={16} /> ⚡ Instant QR
+              <QrCode size={15} /> ⚡ QR
             </button>
             <button
               onClick={handlePrint}
-              className="flex-1 sm:flex-none bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-colors"
+              className="flex-1 sm:flex-none bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
-              <Printer size={16} /> Print / Save as PDF
+              <Printer size={15} /> Print PDF
             </button>
           </div>
         </div>
@@ -271,39 +359,50 @@ export default function DeliverySheetPage() {
 
         {/* VILLAGE ROUTE CLUSTER FILTER (Hidden in print) */}
         {villageList.length > 0 && (
-          <div className="no-print flex items-center gap-2 flex-wrap bg-white p-3 rounded-xl border border-gray-200 text-xs">
-            <span className="font-bold text-gray-700 flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-teal-600" />
-              Village Route (10–20 KM):
-            </span>
+          <div className="no-print flex items-center justify-between gap-2 flex-wrap bg-white p-3 rounded-xl border border-gray-200 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-gray-700 flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-teal-600" />
+                Village Route (10–20 KM):
+              </span>
+              <button
+                onClick={() => setSelectedVillage('all')}
+                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                  selectedVillage === 'all'
+                    ? 'bg-teal-700 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                All Villages
+              </button>
+              {villageList.map((village) => {
+                const count = refillsList.filter((r) =>
+                  (r.customer.locality || r.customer.address || '').toLowerCase().includes(village.toLowerCase())
+                ).length;
+                return (
+                  <button
+                    key={village}
+                    onClick={() => setSelectedVillage(village)}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      selectedVillage === village
+                        ? 'bg-teal-700 text-white'
+                        : 'bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200'
+                    }`}
+                  >
+                    {village} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
             <button
-              onClick={() => setSelectedVillage('all')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                selectedVillage === 'all'
-                  ? 'bg-teal-700 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              onClick={() => setShowDispatchModal(true)}
+              className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-xs shrink-0"
+              title="Send active route list to rider WhatsApp"
             >
-              All Villages
+              <Send size={13} className="text-emerald-600" />
+              <span>Send {selectedVillage === 'all' ? 'All Routes' : `${selectedVillage} Route`} to Rider</span>
             </button>
-            {villageList.map((village) => {
-              const count = refillsList.filter((r) =>
-                (r.customer.locality || r.customer.address || '').toLowerCase().includes(village.toLowerCase())
-              ).length;
-              return (
-                <button
-                  key={village}
-                  onClick={() => setSelectedVillage(village)}
-                  className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                    selectedVillage === village
-                      ? 'bg-teal-700 text-white'
-                      : 'bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200'
-                  }`}
-                >
-                  {village} ({count})
-                </button>
-              );
-            })}
           </div>
         )}
 
@@ -399,22 +498,77 @@ export default function DeliverySheetPage() {
                       >
                         <td className="py-2 px-3 text-center font-bold text-gray-700">{idx + 1}</td>
                         
-                        {/* Patient Name & Phone */}
-                        <td className="py-2 px-3">
+                        {/* Patient Name & Phone + 1-Tap Calling & WhatsApp */}
+                        <td className="py-2.5 px-3">
                           <p className="font-bold text-gray-900">{item.customer.name}</p>
-                          <p className="text-[11px] text-gray-600 font-mono">{item.customer.phone}</p>
-                          <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.2 rounded mt-0.5 ${
+                          
+                          {/* 1-Tap Direct Call & WhatsApp */}
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <a
+                              href={`tel:${item.customer.phone}`}
+                              className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 px-1.5 py-0.5 rounded border border-teal-200 transition-colors"
+                              title="Call Patient Directly"
+                            >
+                              <Phone className="w-3 h-3 text-teal-600" />
+                              <span>{item.customer.phone}</span>
+                            </a>
+                            <a
+                              href={`https://wa.me/91${item.customer.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                `नमस्ते ${item.customer.name} जी, आपकी दवाई मनोज मेडिकल हॉल (सरफुद्दीनपुर) से डिलीवरी के लिए निकल रही है। कुल बिल: ₹${itemBill}। क्या आप घर पर हैं?`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-1.5 py-0.5 rounded bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-[10px] font-bold transition-colors inline-flex items-center gap-0.5"
+                              title="Chat with Patient on WhatsApp"
+                            >
+                              WA
+                            </a>
+                          </div>
+
+                          {/* Alternate Family Phone (Son / Caretaker) if available */}
+                          {item.customer.altPhone && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <a
+                                href={`tel:${item.customer.altPhone}`}
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors"
+                                title="Call Family Member / Son"
+                              >
+                                <span className="text-[9px] uppercase font-bold text-indigo-500">बेटा/परिवार:</span>
+                                <span>{item.customer.altPhone}</span>
+                              </a>
+                            </div>
+                          )}
+
+                          <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.2 rounded mt-1 ${
                             days <= 0 ? 'bg-red-100 text-red-800' : days <= 1 ? 'bg-amber-100 text-amber-800' : 'bg-blue-50 text-blue-800'
                           }`}>
                             {days <= 0 ? 'Overdue' : days === 1 ? 'Due Today' : `${days} days left`}
                           </span>
                         </td>
 
-                        {/* Address */}
-                        <td className="py-2 px-3 max-w-xs">
+                        {/* Address & 1-Tap Google Maps Navigation */}
+                        <td className="py-2.5 px-3 max-w-xs">
                           <p className="text-gray-800 font-medium">
-                            {item.customer.address || (item.customer.locality ? `Village: ${item.customer.locality}, Muzaffarpur` : 'Sarfuddinpur, Muzaffarpur')}
+                            {item.customer.address || (item.customer.locality ? `गाँव: ${item.customer.locality}, मुज़फ़्फ़रपुर` : 'सरफुद्दीनपुर, मुज़फ़्फ़रपुर')}
                           </p>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            {item.customer.locality && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                                📍 {item.customer.locality}
+                              </span>
+                            )}
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                `${item.customer.address || item.customer.locality || 'Sarfuddinpur'}, Muzaffarpur, Bihar`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-0.5 font-medium print:hidden"
+                              title="Search Landmark on Google Maps"
+                            >
+                              <Navigation className="w-2.5 h-2.5" /> मैप देखें
+                            </a>
+                          </div>
                         </td>
 
                         {/* Item & Packaging */}
@@ -543,6 +697,115 @@ export default function DeliverySheetPage() {
           customerPhone={qrModalItem.phone}
           initialNote={qrModalItem.note}
         />
+      )}
+
+      {/* Modal: Share Route to Rider via WhatsApp */}
+      {showDispatchModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-teal-50 to-emerald-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <Send className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">Send Route to Rider on WhatsApp</h3>
+                  <p className="text-xs text-gray-500">
+                    {displayedItems.length} Deliveries • {selectedVillage === 'all' ? 'All Villages' : `Village: ${selectedVillage}`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDispatchModal(false)}
+                className="p-1.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Rider Input Fields */}
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">राइडर का नाम (Rider Name)</label>
+                  <input
+                    type="text"
+                    value={riderName}
+                    onChange={(e) => setRiderName(e.target.value)}
+                    placeholder="e.g. Sonu Kumar"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    राइडर व्हाट्सएप नंबर (Rider WhatsApp) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={riderPhone}
+                    onChange={(e) => setRiderPhone(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs font-mono font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Route Summary Chips */}
+              <div className="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-emerald-950">रूट:</span>
+                  <span className="bg-white px-2 py-0.5 rounded-md font-bold text-emerald-800 border border-emerald-200">
+                    {selectedVillage === 'all' ? 'सभी गाँव (All Villages)' : selectedVillage}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 font-semibold text-emerald-900">
+                  <span>📦 {displayedItems.length} मरीज</span>
+                  <span>💰 कुल वसूली: ₹{totalAmount.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Message Live Preview Box */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-bold text-gray-700">व्हाट्सएप संदेश पूर्वावलोकन (WhatsApp Message Preview)</label>
+                  <button
+                    type="button"
+                    onClick={handleCopyRoute}
+                    className="text-[11px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedRoute ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
+                    <span>{copiedRoute ? 'Copied!' : 'Copy Text'}</span>
+                  </button>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-3.5 border border-gray-200 font-mono text-[11px] text-gray-800 whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
+                  {generateRiderRouteMessage(displayedItems, selectedVillage, riderName)}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="px-5 py-3.5 bg-gray-50 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCopyRoute}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 hover:bg-gray-100 font-bold text-xs text-gray-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {copiedRoute ? <Check size={15} className="text-green-600" /> : <Copy size={15} />}
+                <span>{copiedRoute ? 'Route Copied!' : 'Copy Route Text'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSendToRider}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Send size={16} />
+                <span>🟢 Open WhatsApp &amp; Send to Rider</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardLayout>
   );
