@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
+  '/quick-qr',
 ];
 
 export async function middleware(request: NextRequest) {
@@ -24,6 +25,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/sample_') ||
     pathname.match(/\.(png|jpg|jpeg|gif|svg|csv|ico|css|js)$/)
   ) {
+    return NextResponse.next();
+  }
+
+  // Allow read-only public access to GET /api/settings for QR payee info
+  if (pathname === '/api/settings' && request.method === 'GET') {
     return NextResponse.next();
   }
 
