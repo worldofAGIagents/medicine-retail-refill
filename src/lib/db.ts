@@ -14,21 +14,22 @@ function getDatabaseUrl(): string {
   if (process.env.VERCEL) {
     const tmpDbPath = '/tmp/dev.db';
 
-    if (!fs.existsSync(tmpDbPath)) {
-      const candidates = [
-        path.join(process.cwd(), 'prisma', 'dev.db'),
-        path.join('/var/task', 'prisma', 'dev.db'),
-        path.join(process.cwd(), 'dev.db'),
-      ];
+    const candidates = [
+      path.join(process.cwd(), 'prisma', 'dev.db'),
+      path.join('/var/task', 'prisma', 'dev.db'),
+      path.join(process.cwd(), 'dev.db'),
+    ];
 
-      for (const src of candidates) {
-        if (fs.existsSync(src)) {
-          try {
+    for (const src of candidates) {
+      if (fs.existsSync(src)) {
+        try {
+          const shouldCopy = !fs.existsSync(tmpDbPath) || fs.statSync(src).size !== fs.statSync(tmpDbPath).size;
+          if (shouldCopy) {
             fs.copyFileSync(src, tmpDbPath);
-            break;
-          } catch (e) {
-            console.error('Failed to copy database to /tmp:', e);
           }
+          break;
+        } catch (e) {
+          console.error('Failed to copy database to /tmp:', e);
         }
       }
     }
