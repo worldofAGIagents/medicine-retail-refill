@@ -109,27 +109,40 @@ export default function SettingsPage() {
             overdueTemplate: data.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
             outForDeliveryTemplate: data.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
           });
-          // UPI settings with localStorage fallback
+          // UPI settings with resilient local preference & auto-reseed
           const localUpiId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
           const localUpiPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+          const localCustomized = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_customized') === 'true' : false;
 
-          if (data.upiId) {
-            setUpiId(data.upiId);
+          let finalUpiId = 'manojmedical@okhdfcbank';
+          let finalUpiPayee = 'Manoj Medical Hall';
+
+          if (localCustomized && localUpiId) {
+            // User explicitly saved a custom UPI ID locally
+            finalUpiId = localUpiId;
+            finalUpiPayee = localUpiPayee || data.upiPayeeName || 'Manoj Medical Hall';
+
+            // If the server container booted cold and has default/different UPI ID, silently re-seed it
+            if (data.upiId && data.upiId !== localUpiId) {
+              fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  upiId: localUpiId,
+                  upiPayeeName: finalUpiPayee,
+                }),
+              }).catch(() => {});
+            }
+          } else if (data.upiId) {
+            finalUpiId = data.upiId;
+            finalUpiPayee = data.upiPayeeName || data.pharmacyName || 'Manoj Medical Hall';
           } else if (localUpiId) {
-            setUpiId(localUpiId);
-          } else {
-            setUpiId('worldofagent@okhdfcbank');
+            finalUpiId = localUpiId;
+            finalUpiPayee = localUpiPayee || 'Manoj Medical Hall';
           }
 
-          if (data.upiPayeeName) {
-            setUpiPayeeName(data.upiPayeeName);
-          } else if (localUpiPayee) {
-            setUpiPayeeName(localUpiPayee);
-          } else if (data.pharmacyName) {
-            setUpiPayeeName(data.pharmacyName);
-          } else {
-            setUpiPayeeName('Manoj Medical Hall');
-          }
+          setUpiId(finalUpiId);
+          setUpiPayeeName(finalUpiPayee);
         }
       })
       .catch((err) => console.error('Failed to load settings:', err))
@@ -200,6 +213,7 @@ export default function SettingsPage() {
     try {
       localStorage.setItem('manoj_upi_id', cleanId);
       localStorage.setItem('manoj_upi_payee', cleanPayee);
+      localStorage.setItem('manoj_upi_customized', 'true');
     } catch {}
 
     try {
@@ -246,6 +260,7 @@ export default function SettingsPage() {
     try {
       localStorage.setItem('manoj_upi_id', cleanUpi);
       localStorage.setItem('manoj_upi_payee', cleanPayee);
+      localStorage.setItem('manoj_upi_customized', 'true');
     } catch {}
 
     try {

@@ -43,8 +43,8 @@ export async function GET(request: Request) {
       infantMilkTemplate: settings.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate,
       overdueTemplate: settings.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
       outForDeliveryTemplate: settings.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
-      upiId: settings.upiId || 'worldofagent@okhdfcbank',
-      upiPayeeName: settings.upiPayeeName || settings.pharmacyName || 'Manoj Medical Hall',
+      upiId: process.env.SHOP_UPI_ID || settings.upiId || 'manojmedical@okhdfcbank',
+      upiPayeeName: process.env.SHOP_UPI_PAYEE || settings.upiPayeeName || settings.pharmacyName || 'Manoj Medical Hall',
     };
 
     return NextResponse.json(defaults);

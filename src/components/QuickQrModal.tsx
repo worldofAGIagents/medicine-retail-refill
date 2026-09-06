@@ -42,9 +42,16 @@ export function QuickQrModal({
 
   // Load shop UPI settings
   useEffect(() => {
+    let localId: string | null = null;
+    let localPayee: string | null = null;
+    let localCustomized = false;
+
     try {
-      const localId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
-      const localPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+      if (typeof window !== 'undefined') {
+        localId = localStorage.getItem('manoj_upi_id');
+        localPayee = localStorage.getItem('manoj_upi_payee');
+        localCustomized = localStorage.getItem('manoj_upi_customized') === 'true';
+      }
       if (localId) setUpiId(localId);
       if (localPayee) setPayeeName(localPayee);
     } catch {}
@@ -52,18 +59,31 @@ export function QuickQrModal({
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.upiId) {
+        if (localCustomized && localId) {
+          setUpiId(localId);
+          if (localPayee) setPayeeName(localPayee);
+          if (data?.upiId && data.upiId !== localId) {
+            fetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                upiId: localId,
+                upiPayeeName: localPayee || 'Manoj Medical Hall',
+              }),
+            }).catch(() => {});
+          }
+        } else if (data?.upiId) {
           setUpiId(data.upiId);
+          if (data?.upiPayeeName || data?.pharmacyName) {
+            setPayeeName(data.upiPayeeName || data.pharmacyName);
+          }
         } else {
-          setUpiId((prev) => prev || 'worldofagent@okhdfcbank');
-        }
-        if (data?.upiPayeeName || data?.pharmacyName) {
-          setPayeeName(data.upiPayeeName || data.pharmacyName);
+          setUpiId((prev) => prev || 'manojmedical@okhdfcbank');
         }
         setLoadingSettings(false);
       })
       .catch(() => {
-        setUpiId((prev) => prev || 'worldofagent@okhdfcbank');
+        setUpiId((prev) => prev || 'manojmedical@okhdfcbank');
         setLoadingSettings(false);
       });
   }, [isOpen]);

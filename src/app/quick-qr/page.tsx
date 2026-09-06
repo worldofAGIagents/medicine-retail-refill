@@ -15,7 +15,7 @@ export default function QuickQrPage() {
   const [note, setNote] = useState<string>('Medicine Refill');
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
-  const [upiId, setUpiId] = useState<string>('worldofagent@okhdfcbank');
+  const [upiId, setUpiId] = useState<string>('manojmedical@okhdfcbank');
   const [payeeName, setPayeeName] = useState<string>('Manoj Medical Hall');
   const [copied, setCopied] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
@@ -24,9 +24,16 @@ export default function QuickQrPage() {
   const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let localId: string | null = null;
+    let localPayee: string | null = null;
+    let localCustomized = false;
+
     try {
-      const localId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
-      const localPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+      if (typeof window !== 'undefined') {
+        localId = localStorage.getItem('manoj_upi_id');
+        localPayee = localStorage.getItem('manoj_upi_payee');
+        localCustomized = localStorage.getItem('manoj_upi_customized') === 'true';
+      }
       if (localId) setUpiId(localId);
       if (localPayee) setPayeeName(localPayee);
     } catch {}
@@ -34,9 +41,24 @@ export default function QuickQrPage() {
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.upiId) setUpiId(data.upiId);
-        if (data?.upiPayeeName || data?.pharmacyName) {
-          setPayeeName(data.upiPayeeName || data.pharmacyName);
+        if (localCustomized && localId) {
+          setUpiId(localId);
+          if (localPayee) setPayeeName(localPayee);
+          if (data?.upiId && data.upiId !== localId) {
+            fetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                upiId: localId,
+                upiPayeeName: localPayee || 'Manoj Medical Hall',
+              }),
+            }).catch(() => {});
+          }
+        } else if (data?.upiId) {
+          setUpiId(data.upiId);
+          if (data?.upiPayeeName || data?.pharmacyName) {
+            setPayeeName(data.upiPayeeName || data.pharmacyName);
+          }
         }
         setLoading(false);
       })
