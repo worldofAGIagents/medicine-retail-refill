@@ -18,12 +18,16 @@ const PUBLIC_PATHS = [
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Allow public static assets and files
+  // 1. Allow public static assets, PWA manifest, service worker, and offline fallback
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon.ico') ||
     pathname.startsWith('/sample_') ||
-    pathname.match(/\.(png|jpg|jpeg|gif|svg|csv|ico|css|js)$/)
+    pathname === '/site.webmanifest' ||
+    pathname === '/manifest.json' ||
+    pathname === '/sw.js' ||
+    pathname === '/offline.html' ||
+    pathname.match(/\.(png|jpg|jpeg|gif|svg|csv|ico|css|js|webmanifest|json)$/)
   ) {
     return NextResponse.next();
   }

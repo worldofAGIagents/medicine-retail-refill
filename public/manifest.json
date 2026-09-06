@@ -1,0 +1,62 @@
+{
+  "name": "Manoj Medical Hall — Retailink",
+  "short_name": "Manoj Medical",
+  "description": "Manoj Medical Hall, Sarfuddinpur, Muzaffarpur, Bihar (843118). Chronic medicine refill tracking, village doorstep delivery, and instant UPI QR payments.",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#042f2e",
+  "theme_color": "#0d9488",
+  "lang": "hi-IN",
+  "categories": ["medical", "health", "business"],
+  "icons": [
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "⚡ Quick UPI QR",
+      "short_name": "Quick QR",
+      "description": "Generate Instant Dynamic UPI QR Code for bill collection",
+      "url": "/quick-qr",
+      "icons": [{ "src": "/web-app-manifest-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "📦 Delivery Sheet",
+      "short_name": "Deliveries",
+      "description": "View today's village deliveries and dispatch routes",
+      "url": "/delivery-sheet",
+      "icons": [{ "src": "/web-app-manifest-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "💊 Patient Refills",
+      "short_name": "Refills",
+      "description": "Manage chronic medicine refill schedule",
+      "url": "/refills",
+      "icons": [{ "src": "/web-app-manifest-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}

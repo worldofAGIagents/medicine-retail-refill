@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ऑफ़लाइन मोड | Manoj Medical Hall</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body {
+      background: #f8fafc;
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 20px;
+      padding: 36px 28px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+      border: 1px solid #e2e8f0;
+    }
+    .icon-wrap {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 20px;
+      background: #f0fdfa;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed #0d9488;
+    }
+    .icon-wrap svg {
+      width: 40px;
+      height: 40px;
+      stroke: #0d9488;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #134e4a;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      background: #0d9488;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 14px 20px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+      transition: background 0.2s;
+      text-decoration: none;
+    }
+    .btn:hover {
+      background: #0f766e;
+    }
+    .shop-box {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #f1f5f9;
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.6;
+    }
+    .shop-name {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .phone-link {
+      display: inline-block;
+      margin-top: 8px;
+      font-weight: 700;
+      color: #0d9488;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">
+      <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+      </svg>
+    </div>
+    <h1>इंटरनेट कनेक्शन नहीं है</h1>
+    <p class="subtitle">आप अभी ऑफ़लाइन हैं (Offline Mode)। इंटरनेट कनेक्शन आने पर पेज दोबारा लोड करें।</p>
+    
+    <button class="btn" onclick="window.location.reload()">
+      🔄 दोबारा प्रयास करें (Retry Connection)
+    </button>
+
+    <div class="shop-box">
+      <p class="shop-name">मनोज मेडिकल हॉल (सरफुद्दीनपुर, मुज़फ़्फ़रपुर)</p>
+      <p>गोपालपुर, बोचहाँ रोड, बिहार - 843118</p>
+      <a href="tel:+919876543210" class="phone-link">📞 आपातकालीन संपर्क: +91 98765 43210</a>
+    </div>
+  </div>
+</body>
+</html>
