@@ -38,14 +38,77 @@ export default function CustomersPage() {
   const [category, setCategory] = useState('All');
 
   const loadCustomers = () => {
-    setLoading(true);
+    // 1. Instantly load from local storage so customer data NEVER vanishes on container cold starts
+    let localList: Customer[] = [];
+    try {
+      const raw = localStorage.getItem('manoj_local_customers');
+      if (raw) {
+        localList = JSON.parse(raw);
+        if (Array.isArray(localList) && localList.length > 0) {
+          setCustomers(localList);
+          setLoading(false);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read local customers:', e);
+    }
+
+    // 2. Fetch authoritative records from server
     fetch('/api/customers')
       .then((res) => res.json())
-      .then((data) => {
-        setCustomers(Array.isArray(data) ? data : []);
+      .then((serverData) => {
+        const sList: Customer[] = Array.isArray(serverData) ? serverData : [];
+        const serverPhones = new Set(sList.map((c) => c.phone));
+
+        // Detect if any local customer is missing on the server (e.g. fresh lambda container)
+        const missingOnServer = localList.filter((lc) => !serverPhones.has(lc.phone));
+        if (missingOnServer.length > 0) {
+          // Auto-reseed server in the background
+          missingOnServer.forEach((mc) => {
+            fetch('/api/customers/onboard', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: mc.name,
+                phone: mc.phone,
+                altPhone: mc.altPhone,
+                address: mc.address,
+                locality: mc.locality,
+                city: mc.city || 'Muzaffarpur',
+                primaryCondition: mc.primaryCondition,
+                medicines: mc.prescriptions?.map((p) => ({
+                  medicineId: (p.medicine as any)?.id,
+                  dailyDosage: p.dailyDosage,
+                  lastPurchaseQty: (p as any).lastPurchaseQty || 30,
+                  customPackaging: (p as any).customPackaging,
+                  unitType: 'tablets',
+                })) || [],
+              }),
+            }).catch((err) => console.warn('Reseed warning for', mc.name, err));
+          });
+        }
+
+        // Merge: server list takes precedence for updated status, local holds unpersisted
+        const merged = [...sList];
+        localList.forEach((lc) => {
+          if (!merged.some((m) => m.phone === lc.phone)) {
+            merged.push(lc);
+          }
+        });
+
+        setCustomers(merged);
+        if (merged.length > 0) {
+          try {
+            localStorage.setItem('manoj_local_customers', JSON.stringify(merged));
+          } catch (e) {
+            console.warn('Failed updating localStorage cache:', e);
+          }
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setLoading(false);
+      });
   };
 
   useEffect(() => {

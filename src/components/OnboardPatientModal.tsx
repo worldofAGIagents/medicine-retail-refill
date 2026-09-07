@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X, UserPlus, Phone, MapPin, Search, CheckCircle2,
-  AlertCircle, Pill, Calendar, Clock, Heart, Sparkles, Plus, Trash2, Layers
+  AlertCircle, Pill, Calendar, Clock, Heart, Sparkles, Plus, Minus, Trash2, Layers
 } from 'lucide-react';
 
 interface Medicine {
@@ -25,6 +25,8 @@ export interface PrescribedMedicineItem {
   totalQty: number;
   dailyDosage: number;
   bufferDays: number;
+  customMrp?: number;
+  customUnitsPerPack?: number;
 }
 
 interface OnboardPatientModalProps {
@@ -140,6 +142,8 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         totalQty: packUnits || 400,
         dailyDosage: 40, // 40 grams / day default
         bufferDays: 2,
+        customMrp: med.mrp,
+        customUnitsPerPack: packUnits || 400,
       };
     } else {
       const defaultStrips = 2; // e.g. 2 strips default
@@ -150,6 +154,8 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         totalQty: defaultStrips * packUnits,
         dailyDosage: 1, // 1 tablet / day default
         bufferDays: 3,
+        customMrp: med.mrp,
+        customUnitsPerPack: packUnits,
       };
     }
 
@@ -168,17 +174,25 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       const current = updated[index];
       const merged = { ...current, ...updates };
 
-      const packUnits = current.medicine.unitsPerPack > 0 ? current.medicine.unitsPerPack : 10;
+      const packUnits = (merged.customUnitsPerPack && merged.customUnitsPerPack > 0)
+        ? merged.customUnitsPerPack
+        : (current.medicine.unitsPerPack > 0 ? current.medicine.unitsPerPack : 10);
 
-      // If stripCount changed in strips mode, update totalQty
-      if (updates.stripCount !== undefined && merged.unitMode === 'strips') {
-        merged.totalQty = Math.max(1, updates.stripCount) * packUnits;
+      // If stripCount or customUnitsPerPack changed in strips mode, recalculate totalQty
+      if ((updates.stripCount !== undefined || updates.customUnitsPerPack !== undefined) && merged.unitMode === 'strips') {
+        const count = merged.stripCount > 0 ? merged.stripCount : 1;
+        merged.totalQty = count * packUnits;
       }
 
       // If unitMode switched to strips, recalculate totalQty from stripCount
       if (updates.unitMode === 'strips') {
         merged.stripCount = merged.stripCount > 0 ? merged.stripCount : 1;
         merged.totalQty = merged.stripCount * packUnits;
+      }
+
+      if ((updates.stripCount !== undefined || updates.customUnitsPerPack !== undefined) && merged.unitMode === 'tins') {
+        const count = merged.stripCount > 0 ? merged.stripCount : 1;
+        merged.totalQty = count * packUnits;
       }
 
       updated[index] = merged;
@@ -234,7 +248,9 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         city: 'Muzaffarpur',
         primaryCondition: condition,
         medicines: prescribedMeds.map((item) => {
-          const packUnits = item.medicine.unitsPerPack > 0 ? item.medicine.unitsPerPack : 10;
+          const packUnits = (item.customUnitsPerPack && item.customUnitsPerPack > 0)
+            ? item.customUnitsPerPack
+            : (item.medicine.unitsPerPack > 0 ? item.medicine.unitsPerPack : 10);
           let packagingDesc = '';
           if (item.unitMode === 'strips') {
             packagingDesc = `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`;
@@ -252,6 +268,8 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             bufferDays: Number(item.bufferDays) || 3,
             customPackaging: packagingDesc,
             unitType: item.unitMode === 'tins' ? 'grams' : 'tablets',
+            customMrp: item.customMrp && Number(item.customMrp) > 0 ? Number(item.customMrp) : item.medicine.mrp,
+            customUnitsPerPack: packUnits,
           };
         }),
       };
@@ -267,6 +285,46 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         setErrorMsg(data.error || 'Failed to onboard patient');
         setSaving(false);
         return;
+      }
+
+      // FAIL-SAFE LOCAL STORAGE PERSISTENCE:
+      // Even if serverless container sleeps or redeploys, customer stays safely in browser
+      try {
+        const rawLocal = localStorage.getItem('manoj_local_customers');
+        const existingList = rawLocal ? JSON.parse(rawLocal) : [];
+        const newRecord = {
+          id: data?.customer?.id || `local-${Date.now()}`,
+          name: name.trim(),
+          phone: cleanPhone,
+          altPhone: altPhone.trim() || undefined,
+          address: villageAddress,
+          locality: village.trim(),
+          city: 'Muzaffarpur',
+          primaryCondition: condition,
+          whatsappEnabled: true,
+          createdAt: new Date().toISOString(),
+          prescriptions: prescribedMeds.map((item, pIdx) => {
+            const packUnits = item.customUnitsPerPack || item.medicine.unitsPerPack || 10;
+            const preview = getRefillPreview(item);
+            return {
+              id: (data?.prescriptions && data.prescriptions[pIdx]?.id) || `rx-${Date.now()}-${pIdx}`,
+              dailyDosage: Number(item.dailyDosage) || 1,
+              lastPurchaseQty: Number(item.totalQty) || 30,
+              nextRefillDate: preview.refillDateStr,
+              customPackaging: `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`,
+              medicine: {
+                ...item.medicine,
+                mrp: item.customMrp || item.medicine.mrp,
+                unitsPerPack: packUnits,
+              },
+            };
+          }),
+        };
+
+        const updatedLocal = [newRecord, ...existingList.filter((c: any) => c.phone !== cleanPhone)];
+        localStorage.setItem('manoj_local_customers', JSON.stringify(updatedLocal));
+      } catch (localErr) {
+        console.warn('localStorage backup warning:', localErr);
       }
 
       setSuccessMsg(`Patient ${name} onboarded with ${prescribedMeds.length} medicine(s) successfully!`);
@@ -465,8 +523,14 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             {prescribedMeds.length > 0 && (
               <div className="space-y-3">
                 {prescribedMeds.map((item, idx) => {
-                  const packUnits = item.medicine.unitsPerPack > 0 ? item.medicine.unitsPerPack : 10;
+                  const packUnits = (item.customUnitsPerPack && item.customUnitsPerPack > 0)
+                    ? item.customUnitsPerPack
+                    : (item.medicine.unitsPerPack > 0 ? item.medicine.unitsPerPack : 10);
+                  const effectiveMrp = item.customMrp !== undefined ? item.customMrp : item.medicine.mrp;
                   const { supplyDays, refillDateStr } = getRefillPreview(item);
+                  const approxTotalCost = item.unitMode === 'strips' || item.unitMode === 'tins'
+                    ? (effectiveMrp * (item.stripCount || 1))
+                    : (effectiveMrp * (item.totalQty / packUnits));
 
                   return (
                     <div
@@ -482,21 +546,58 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                             </span>
                             <p className="font-bold text-gray-900 text-sm truncate">{item.medicine.name}</p>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 pl-7">
-                            <span>{item.medicine.manufacturer || 'Indian Pharma'}</span>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 mt-1 pl-7">
+                            <span className="truncate max-w-[120px]">{item.medicine.manufacturer || 'Indian Pharma'}</span>
                             <span>•</span>
-                            <span className="font-semibold text-teal-800">
-                              {packUnits} {item.unitMode === 'tins' ? 'g Tin' : 'tabs/strip'}
-                            </span>
+                            {/* Editable Packaging */}
+                            <div className="flex items-center gap-1 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                              <label className="font-semibold text-teal-900 text-[10px] uppercase">Pack:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={item.customUnitsPerPack ?? packUnits}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                  handleUpdateMedicine(idx, { customUnitsPerPack: isNaN(val) ? 0 : val });
+                                }}
+                                onBlur={() => {
+                                  if (!item.customUnitsPerPack || item.customUnitsPerPack < 1) {
+                                    handleUpdateMedicine(idx, { customUnitsPerPack: packUnits });
+                                  }
+                                }}
+                                className="w-12 text-center text-xs font-bold text-teal-900 bg-white border border-teal-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-teal-500"
+                                title="Edit packaging (e.g. change 10 to 15 tabs/strip)"
+                              />
+                              <span className="text-[10px] text-teal-800 font-medium">
+                                {item.unitMode === 'tins' ? 'g/tin' : 'tabs/strip'}
+                              </span>
+                            </div>
                             <span>•</span>
-                            <span>MRP ₹{item.medicine.mrp}</span>
+                            {/* Editable MRP */}
+                            <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              <label className="font-semibold text-amber-900 text-[10px] uppercase">MRP ₹</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                value={item.customMrp !== undefined ? item.customMrp : item.medicine.mrp}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  handleUpdateMedicine(idx, { customMrp: isNaN(val) ? 0 : val });
+                                }}
+                                className="w-16 text-center text-xs font-bold text-amber-900 bg-white border border-amber-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-amber-500"
+                                title="Edit medicine MRP"
+                              />
+                            </div>
                           </div>
                         </div>
 
                         <button
                           type="button"
                           onClick={() => handleRemoveMedicine(idx)}
-                          className="text-gray-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                          className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
                           title="Remove Medicine"
                         >
                           <Trash2 size={16} />
@@ -539,39 +640,78 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
 
                           {item.unitMode === 'strips' ? (
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { stripCount: Math.max(1, (item.stripCount || 1) - 1) })}
+                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                                  title="Decrease strip count"
+                                >
+                                  <Minus size={14} />
+                                </button>
                                 <input
                                   type="number"
                                   min={1}
-                                  value={item.stripCount}
-                                  onChange={(e) =>
-                                    handleUpdateMedicine(idx, { stripCount: Math.max(1, Number(e.target.value) || 1) })
-                                  }
-                                  className="w-20 px-2.5 py-1.5 text-sm font-bold bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                                  value={item.stripCount === 0 ? '' : item.stripCount}
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                    handleUpdateMedicine(idx, { stripCount: isNaN(val) ? 0 : val });
+                                  }}
+                                  onBlur={() => {
+                                    if (!item.stripCount || item.stripCount < 1) {
+                                      handleUpdateMedicine(idx, { stripCount: 1 });
+                                    }
+                                  }}
+                                  className="w-16 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                                 />
-                                <span className="text-xs font-semibold text-gray-600">
-                                  strip(s)
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { stripCount: (item.stripCount || 1) + 1 })}
+                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                                  title="Increase strip count"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                                <span className="text-xs font-semibold text-gray-600">strip(s)</span>
                               </div>
                               <p className="text-[11px] text-teal-700 font-medium mt-1">
-                                = <strong>{item.totalQty}</strong> tablets total
+                                = <strong>{item.totalQty}</strong> tablets ({packUnits} tabs/strip)
                               </p>
                             </div>
                           ) : item.unitMode === 'tins' ? (
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { stripCount: Math.max(1, (item.stripCount || 1) - 1) })}
+                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                                >
+                                  <Minus size={14} />
+                                </button>
                                 <input
                                   type="number"
                                   min={1}
-                                  value={item.stripCount}
-                                  onChange={(e) =>
-                                    handleUpdateMedicine(idx, {
-                                      stripCount: Math.max(1, Number(e.target.value) || 1),
-                                      totalQty: Math.max(1, Number(e.target.value) || 1) * packUnits,
-                                    })
-                                  }
-                                  className="w-20 px-2.5 py-1.5 text-sm font-bold bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                                  value={item.stripCount === 0 ? '' : item.stripCount}
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                    handleUpdateMedicine(idx, { stripCount: isNaN(val) ? 0 : val });
+                                  }}
+                                  onBlur={() => {
+                                    if (!item.stripCount || item.stripCount < 1) {
+                                      handleUpdateMedicine(idx, { stripCount: 1 });
+                                    }
+                                  }}
+                                  className="w-16 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                                 />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { stripCount: (item.stripCount || 1) + 1 })}
+                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                                >
+                                  <Plus size={14} />
+                                </button>
                                 <span className="text-xs font-semibold text-gray-600">tin(s)</span>
                               </div>
                               <p className="text-[11px] text-teal-700 font-medium mt-1">
@@ -580,15 +720,39 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                             </div>
                           ) : (
                             <div>
-                              <input
-                                type="number"
-                                min={1}
-                                value={item.totalQty}
-                                onChange={(e) =>
-                                  handleUpdateMedicine(idx, { totalQty: Math.max(1, Number(e.target.value) || 1) })
-                                }
-                                className="w-full px-2.5 py-1.5 text-sm font-bold bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-                              />
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { totalQty: Math.max(1, (item.totalQty || 10) - 5) })}
+                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                                >
+                                  <Minus size={14} />
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.totalQty === 0 ? '' : item.totalQty}
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                    handleUpdateMedicine(idx, { totalQty: isNaN(val) ? 0 : val });
+                                  }}
+                                  onBlur={() => {
+                                    if (!item.totalQty || item.totalQty < 1) {
+                                      handleUpdateMedicine(idx, { totalQty: 10 });
+                                    }
+                                  }}
+                                  className="w-20 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { totalQty: (item.totalQty || 0) + 5 })}
+                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                                <span className="text-xs font-semibold text-gray-600">tabs</span>
+                              </div>
                               <p className="text-[11px] text-gray-400 mt-1">total loose tablets</p>
                             </div>
                           )}
@@ -599,18 +763,44 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                           <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
                             Daily Usage
                           </label>
-                          <input
-                            type="number"
-                            min={0.5}
-                            step={0.5}
-                            value={item.dailyDosage}
-                            onChange={(e) =>
-                              handleUpdateMedicine(idx, { dailyDosage: Math.max(0.5, Number(e.target.value) || 1) })
-                            }
-                            className="w-full px-2.5 py-1.5 text-sm font-bold bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateMedicine(idx, { dailyDosage: Math.max(0.5, (item.dailyDosage || 1) - 0.5) })}
+                              className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <input
+                              type="number"
+                              min={0.5}
+                              step={0.5}
+                              value={item.dailyDosage === 0 ? '' : item.dailyDosage}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                handleUpdateMedicine(idx, { dailyDosage: isNaN(val) ? 0 : val });
+                              }}
+                              onBlur={() => {
+                                if (!item.dailyDosage || item.dailyDosage <= 0) {
+                                  handleUpdateMedicine(idx, { dailyDosage: 1 });
+                                }
+                              }}
+                              className="w-16 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateMedicine(idx, { dailyDosage: (item.dailyDosage || 1) + 0.5 })}
+                              className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
+                            >
+                              <Plus size={14} />
+                            </button>
+                            <span className="text-xs font-semibold text-gray-600">
+                              {item.unitMode === 'tins' ? 'g/day' : 'tab/day'}
+                            </span>
+                          </div>
                           <p className="text-[11px] text-gray-400 mt-1">
-                            {item.unitMode === 'tins' ? 'grams / day' : 'tablet(s) / day'}
+                            {item.unitMode === 'tins' ? 'grams per day' : 'tablets per day'}
                           </p>
                         </div>
 
@@ -622,9 +812,10 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                             </span>
                             <span className="text-xs font-bold text-teal-800">{refillDateStr}</span>
                           </div>
-                          <span className="text-[10px] font-semibold text-gray-500">
-                            ~{supplyDays} days of supply
-                          </span>
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 pt-1 border-t border-gray-100">
+                            <span>~{supplyDays}d supply</span>
+                            <span className="text-amber-700 font-bold">₹{approxTotalCost.toFixed(0)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>

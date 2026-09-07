@@ -72,7 +72,51 @@ export default function RefillsPage() {
     fetch('/api/refills')
       .then((res) => res.json())
       .then((data) => {
-        setRefillsList(Array.isArray(data) ? data : []);
+        let list: RefillItem[] = Array.isArray(data) ? data : [];
+        if (list.length === 0) {
+          try {
+            const raw = localStorage.getItem('manoj_local_customers');
+            if (raw) {
+              const localList = JSON.parse(raw);
+              if (Array.isArray(localList) && localList.length > 0) {
+                // Auto reseed to server in background
+                localList.forEach((mc: any) => {
+                  fetch('/api/customers/onboard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      name: mc.name,
+                      phone: mc.phone,
+                      altPhone: mc.altPhone,
+                      address: mc.address,
+                      locality: mc.locality,
+                      city: mc.city || 'Muzaffarpur',
+                      primaryCondition: mc.primaryCondition,
+                      medicines: mc.prescriptions?.map((p: any) => ({
+                        medicineId: p.medicine?.id,
+                        dailyDosage: p.dailyDosage,
+                        lastPurchaseQty: p.lastPurchaseQty || 30,
+                        customPackaging: p.customPackaging,
+                        unitType: 'tablets',
+                      })) || [],
+                    }),
+                  }).then(() => {
+                    // Refetch refills after reseed
+                    fetch('/api/refills')
+                      .then((r) => r.json())
+                      .then((refreshed) => {
+                        if (Array.isArray(refreshed) && refreshed.length > 0) {
+                          setRefillsList(refreshed);
+                        }
+                      })
+                      .catch(() => {});
+                  }).catch(() => {});
+                });
+              }
+            }
+          } catch (e) {}
+        }
+        setRefillsList(list);
         setLoading(false);
       })
       .catch(() => setLoading(false));

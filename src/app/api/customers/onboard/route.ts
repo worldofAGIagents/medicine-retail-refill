@@ -91,14 +91,22 @@ export async function POST(request: Request) {
       const med = await db.medicine.findUnique({ where: { id: item.medicineId } });
       if (!med) continue;
 
-      // DYNAMIC LEARNING: Tag this medicine with the customer's condition & mark as chronic
+      // DYNAMIC LEARNING & CUSTOM OVERRIDES: Update medicine MRP, packaging & chronic category
+      const medUpdates: any = {};
+      if (item.customMrp && Number(item.customMrp) > 0) {
+        medUpdates.mrp = Number(item.customMrp);
+      }
+      if (item.customUnitsPerPack && Number(item.customUnitsPerPack) > 0) {
+        medUpdates.unitsPerPack = Number(item.customUnitsPerPack);
+      }
       if (primaryCondition && primaryCondition !== 'General') {
+        medUpdates.category = primaryCondition;
+        medUpdates.isChronicMed = true;
+      }
+      if (Object.keys(medUpdates).length > 0) {
         await db.medicine.update({
           where: { id: item.medicineId },
-          data: {
-            category: primaryCondition,
-            isChronicMed: true,
-          },
+          data: medUpdates,
         });
         updatedCount++;
       }
