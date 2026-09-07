@@ -204,7 +204,7 @@ export async function POST(request: Request) {
       medicineUpdated: updatedCount > 0,
       updatedMedicinesCount: updatedCount,
       message: `Patient ${customer.name} onboarded with ${createdPrescriptions.length} medicine(s) successfully!`,
-    }, { status: 201 });
+    }, { status: 200 });
   } catch (error: any) {
     console.error('Onboarding error:', error);
     return NextResponse.json({ error: error.message || 'Error onboarding patient' }, { status: 500 });
