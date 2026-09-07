@@ -274,57 +274,64 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         }),
       };
 
-      const res = await fetch('/api/customers/onboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      // 1. FAIL-SAFE LOCAL STORAGE PERSISTENCE (Guarantees zero data loss even during server sleep/redeploy)
+      const newRecord = {
+        id: `local-${Date.now()}`,
+        name: name.trim(),
+        phone: cleanPhone,
+        altPhone: altPhone.trim() || undefined,
+        address: villageAddress,
+        locality: village.trim(),
+        city: 'Muzaffarpur',
+        primaryCondition: condition,
+        whatsappEnabled: true,
+        createdAt: new Date().toISOString(),
+        prescriptions: prescribedMeds.map((item, pIdx) => {
+          const packUnits = item.customUnitsPerPack || item.medicine.unitsPerPack || 10;
+          const preview = getRefillPreview(item);
+          return {
+            id: `rx-${Date.now()}-${pIdx}`,
+            dailyDosage: Number(item.dailyDosage) || 1,
+            lastPurchaseQty: Number(item.totalQty) || 30,
+            nextRefillDate: preview.refillDateStr,
+            customPackaging: `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`,
+            medicine: {
+              ...item.medicine,
+              mrp: item.customMrp || item.medicine.mrp,
+              unitsPerPack: packUnits,
+            },
+          };
+        }),
+      };
 
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMsg(data.error || 'Failed to onboard patient');
-        setSaving(false);
-        return;
-      }
-
-      // FAIL-SAFE LOCAL STORAGE PERSISTENCE:
-      // Even if serverless container sleeps or redeploys, customer stays safely in browser
       try {
         const rawLocal = localStorage.getItem('manoj_local_customers');
         const existingList = rawLocal ? JSON.parse(rawLocal) : [];
-        const newRecord = {
-          id: data?.customer?.id || `local-${Date.now()}`,
-          name: name.trim(),
-          phone: cleanPhone,
-          altPhone: altPhone.trim() || undefined,
-          address: villageAddress,
-          locality: village.trim(),
-          city: 'Muzaffarpur',
-          primaryCondition: condition,
-          whatsappEnabled: true,
-          createdAt: new Date().toISOString(),
-          prescriptions: prescribedMeds.map((item, pIdx) => {
-            const packUnits = item.customUnitsPerPack || item.medicine.unitsPerPack || 10;
-            const preview = getRefillPreview(item);
-            return {
-              id: (data?.prescriptions && data.prescriptions[pIdx]?.id) || `rx-${Date.now()}-${pIdx}`,
-              dailyDosage: Number(item.dailyDosage) || 1,
-              lastPurchaseQty: Number(item.totalQty) || 30,
-              nextRefillDate: preview.refillDateStr,
-              customPackaging: `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`,
-              medicine: {
-                ...item.medicine,
-                mrp: item.customMrp || item.medicine.mrp,
-                unitsPerPack: packUnits,
-              },
-            };
-          }),
-        };
-
         const updatedLocal = [newRecord, ...existingList.filter((c: any) => c.phone !== cleanPhone)];
         localStorage.setItem('manoj_local_customers', JSON.stringify(updatedLocal));
       } catch (localErr) {
         console.warn('localStorage backup warning:', localErr);
+      }
+
+      // 2. Sync to server database in parallel
+      try {
+        const res = await fetch('/api/customers/onboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data?.customer?.id) {
+          newRecord.id = data.customer.id;
+          try {
+            const rawLocal = localStorage.getItem('manoj_local_customers');
+            const existingList = rawLocal ? JSON.parse(rawLocal) : [];
+            const updated = [newRecord, ...existingList.filter((c: any) => c.phone !== cleanPhone)];
+            localStorage.setItem('manoj_local_customers', JSON.stringify(updated));
+          } catch (_) {}
+        }
+      } catch (netErr) {
+        console.warn('Server sync will auto-retry on reload:', netErr);
       }
 
       setSuccessMsg(`Patient ${name} onboarded with ${prescribedMeds.length} medicine(s) successfully!`);

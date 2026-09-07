@@ -3,7 +3,18 @@ import path from 'path';
 import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const dbUrl =
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.DATABASE_URL ||
+  'postgres://postgres.klozatpuxeyeouurfofe:uo32IjsjE2vaUDad@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true';
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: dbUrl,
+    },
+  },
+});
 
 const CHRONIC_CATEGORIES: Record<string, RegExp> = {
   'Infant Milk': /\baptamil\b|\bsimilac\b|\bnan pro\b|\blactogen\b|\bdexolac\b|\bpediasure\b|\bfarex\b|\benfamil\b|\bnestogen\b/i,
@@ -84,12 +95,12 @@ async function main() {
   let upsertedCount = 0;
   let chronicCount = 0;
 
-  // Process in batches of 200 for fast database writes
-  const batchSize = 200;
+  // Process in batches of 1000 for ultra-fast bulk insert into PostgreSQL
+  const batchSize = 1000;
   for (let i = 0; i < rows.length; i += batchSize) {
     const chunk = rows.slice(i, i + batchSize);
 
-    const operations = chunk.map((row) => {
+    const items = chunk.map((row) => {
       const margItemCode = String(row.ItemCode || row.ITEM_CODE || row.Item_Code || '').trim();
       const rawName = String(row.Name || row.ITEM_NAME || '').trim();
       if (!rawName || !margItemCode) return null;
@@ -105,47 +116,30 @@ async function main() {
 
       if (isChronic) chronicCount++;
 
-      return prisma.medicine.upsert({
-        where: { margItemCode },
-        update: {
-          name: rawName,
-          genericName: saltComposition || rawName,
-          manufacturer,
-          category,
-          saltComposition,
-          packagingType,
-          unitsPerPack,
-          mrp,
-          hsnCode,
-          isChronicMed: isChronic,
-          currentStock,
-          reorderLevel: 20,
-        },
-        create: {
-          margItemCode,
-          name: rawName,
-          genericName: saltComposition || rawName,
-          manufacturer,
-          category,
-          saltComposition,
-          packagingType,
-          unitsPerPack,
-          packsPerBox: 10,
-          mrp,
-          hsnCode,
-          isChronicMed: isChronic,
-          currentStock,
-          reorderLevel: 20,
-        },
-      });
-    }).filter(Boolean);
+      return {
+        margItemCode,
+        name: rawName,
+        genericName: saltComposition || rawName,
+        manufacturer,
+        category,
+        saltComposition,
+        packagingType,
+        unitsPerPack,
+        packsPerBox: 10,
+        mrp,
+        hsnCode,
+        isChronicMed: isChronic,
+        currentStock,
+        reorderLevel: 20,
+      };
+    }).filter(Boolean) as any[];
 
-    if (operations.length > 0) {
-      await prisma.$transaction(operations as any);
-      upsertedCount += operations.length;
-      if (upsertedCount % 1000 === 0 || upsertedCount === rows.length) {
-        console.log(`Progress: ${upsertedCount}/${rows.length} products ingested...`);
-      }
+    if (items.length > 0) {
+      await (prisma.medicine.createMany as any)({
+        data: items,
+      });
+      upsertedCount += items.length;
+      console.log(`Progress: ${upsertedCount}/${rows.length} products ingested...`);
     }
   }
 
