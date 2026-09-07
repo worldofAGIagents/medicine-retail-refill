@@ -720,7 +720,7 @@ export default function DashboardPage() {
                 </Link>
 
                 <Link
-                  href="/import"
+                  href="/settings?tab=import"
                   className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-200 transition-colors text-left"
                 >
                   <div className="p-2 bg-gray-700 text-white rounded-lg">

@@ -41,7 +41,9 @@ async function sendSingleWhatsApp(payload: {
   const hindiTemplate = settings.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate;
   const englishTemplate = settings.englishTemplate || DEFAULT_TEMPLATES.englishTemplate;
   const infantMilkTemplate = settings.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate;
+  const englishInfantMilkTemplate = settings.englishInfantMilkTemplate || DEFAULT_TEMPLATES.englishInfantMilkTemplate;
   const overdueTemplate = settings.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate;
+  const englishOverdueTemplate = settings.englishOverdueTemplate || DEFAULT_TEMPLATES.englishOverdueTemplate;
 
   let phone = rawPhone;
   let targetPrescriptionId = prescriptionId;
@@ -78,15 +80,19 @@ async function sendSingleWhatsApp(payload: {
   // Choose template based on category, urgency, and language preference
   let chosenTemplate = preferredLang === 'english' ? englishTemplate : hindiTemplate;
   if (isInfantMilk) {
-    chosenTemplate = infantMilkTemplate;
+    chosenTemplate = preferredLang === 'english' ? englishInfantMilkTemplate : infantMilkTemplate;
   } else if (daysRemaining <= 0) {
-    chosenTemplate = overdueTemplate;
+    chosenTemplate = preferredLang === 'english' ? englishOverdueTemplate : overdueTemplate;
   }
+
+  const daysLabel = preferredLang === 'english'
+    ? (daysRemaining <= 0 ? 'Finished' : `${daysRemaining} days`)
+    : (daysRemaining <= 0 ? 'समाप्त' : `${daysRemaining} दिन`);
 
   const message = customMessage || renderTemplate(chosenTemplate, {
     name: customerName,
     medicine: medicineName,
-    days: daysRemaining <= 0 ? 'समाप्त' : `${daysRemaining} दिन`,
+    days: daysLabel,
     date: formattedRefillDate,
     pharmacy: pharmacyName,
     phone: pharmacyPhone,

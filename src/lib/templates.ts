@@ -12,11 +12,18 @@ export type TemplateKey =
   | 'hindiTemplate'
   | 'englishTemplate'
   | 'infantMilkTemplate'
+  | 'englishInfantMilkTemplate'
   | 'overdueTemplate'
-  | 'outForDeliveryTemplate';
+  | 'englishOverdueTemplate'
+  | 'outForDeliveryTemplate'
+  | 'englishOutForDeliveryTemplate';
+
+export type TemplateCategoryType = 'chronic' | 'infantMilk' | 'overdue' | 'outForDelivery';
 
 export interface TemplateDefinition {
   key: TemplateKey;
+  language: 'hindi' | 'english';
+  type: TemplateCategoryType;
   label: string;
   shortLabel: string;
   category: string;
@@ -31,24 +38,33 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
   hindiTemplate:
     'नमस्ते {{name}} जी, आपकी नियमित दवाई {{medicine}} {{days}} में समाप्त होने वाली है। क्या हम आपके गाँव ({{address}}) में आज फ्री होम डिलीवरी भिजवा दें? कृपया हाँ या YES लिखकर रिप्लाई करें।\n\n- मनोज मेडिकल हॉल (Manoj Medical Hall), सरफुद्दीनपुर, गोपालपुर (मुज़फ़्फ़रपुर), फोन: {{phone}}',
   englishTemplate:
-    'Dear {{name}}, your chronic medicine supply of {{medicine}} will finish in {{days}}. Free village doorstep delivery available from Manoj Medical Hall, Sarfuddinpur. Reply YES to confirm delivery.\n\n- Manoj Medical Hall, Ph: {{phone}}',
+    'Dear {{name}}, your regular chronic medicine supply of {{medicine}} will finish in {{days}}. Free village doorstep delivery available from Manoj Medical Hall, Sarfuddinpur. Reply YES to confirm delivery.\n\n- Manoj Medical Hall, Ph: {{phone}}',
   infantMilkTemplate:
     'नमस्ते {{name}} जी, आपके बेबी का {{medicine}} लगभग समाप्त होने वाला है (शेष: {{days}})। बच्चे के पोषण में कोई रुकावट न आए, इसके लिए क्या हम नया टिन आज ही आपके गाँव पहुंचा दें? कन्फर्म करने के लिए YES भेजें।\n\n- मनोज मेडिकल हॉल (सरफुद्दीनपुर)',
+  englishInfantMilkTemplate:
+    "Dear {{name}}, your baby's {{medicine}} is running low (approx {{days}} remaining). To ensure uninterrupted child nutrition, shall we deliver a fresh tin to your village today? Reply YES to confirm.\n\n- Manoj Medical Hall (Sarfuddinpur), Ph: {{phone}}",
   overdueTemplate:
     '⚠️ अति आवश्यक: नमस्ते {{name}} जी, आपकी नियमित दवाई {{medicine}} समाप्त हो चुकी है! स्वास्थ्य सुरक्षा के लिए खुराक न छोड़ें। तुरंत गाँव में डिलीवरी पाने के लिए YES भेजें या कॉल करें।\n\n- मनोज मेडिकल हॉल, सरफुद्दीनपुर, फोन: {{phone}}',
+  englishOverdueTemplate:
+    '⚠️ URGENT: Dear {{name}}, your regular medicine {{medicine}} is completely finished! Please do not skip your prescribed dose. Reply YES or call now for immediate doorstep village delivery.\n\n- Manoj Medical Hall, Sarfuddinpur, Ph: {{phone}}',
   outForDeliveryTemplate:
     'नमस्ते {{name}} जी, आपकी दवाई मनोज मेडिकल हॉल (सरफुद्दीनपुर) से आपके गाँव के पते के लिए निकल चुकी है। कृपया डिलीवरी बॉय को कैश या UPI द्वारा भुगतान करें।\n\n- मनोज मेडिकल हॉल, फोन: {{phone}}',
+  englishOutForDeliveryTemplate:
+    'Dear {{name}}, your medicine order has departed from Manoj Medical Hall for delivery to your village address. Please pay the delivery rider via Cash or UPI.\n\n- Manoj Medical Hall, Ph: {{phone}}',
 };
 
 export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
+  // 1. Hindi Templates
   {
     key: 'hindiTemplate',
-    label: 'Chronic Refill Reminder (Hindi)',
-    shortLabel: 'Hindi Chronic',
+    language: 'hindi',
+    type: 'chronic',
+    label: 'नियमित क्रॉनिक रिफिल अलर्ट (Hindi)',
+    shortLabel: 'क्रॉनिक रिफिल',
     category: 'Chronic Refill',
     badge: 'Proactive Alert',
     badgeColor: 'bg-teal-50 text-teal-700 border-teal-200',
-    description: 'Sent 2-3 days before chronic patient runs out of regular medication in Hindi.',
+    description: 'मरीज़ की नियमित दवाई समाप्त होने से 2-3 दिन पूर्व भेजा जाने वाला अलर्ट (हिंदी में)।',
     sampleVars: {
       name: 'रमेश कुमार',
       medicine: 'Glycomet-GP 1mg (Strip of 15)',
@@ -60,31 +76,15 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     },
   },
   {
-    key: 'englishTemplate',
-    label: 'Chronic Refill Reminder (English)',
-    shortLabel: 'English Chronic',
-    category: 'Chronic Refill',
-    badge: 'Proactive Alert',
-    badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
-    description: 'Sent 2-3 days before chronic patient runs out of regular medication in English.',
-    sampleVars: {
-      name: 'Ramesh Kumar',
-      medicine: 'Telma 40mg (Strip of 30)',
-      days: '3 days',
-      date: '08 Sep',
-      pharmacy: 'Manoj Medical Hall',
-      phone: '+91 98765 43210',
-      address: 'Village: Gopalpur, Ward 4 (Near Shiv Mandir)',
-    },
-  },
-  {
     key: 'infantMilkTemplate',
-    label: 'Infant Milk Formula Replenishment',
-    shortLabel: 'Infant Milk',
+    language: 'hindi',
+    type: 'infantMilk',
+    label: 'शिशु आहार / मिल्क फॉर्मूला अलर्ट (Hindi)',
+    shortLabel: 'शिशु आहार (Infant Milk)',
     category: 'Baby Nutrition',
     badge: 'Infant Nutrition',
     badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
-    description: 'Special care reminder for parents whose infant formula tin (Nan Pro / Similac) is low.',
+    description: 'शिशु फॉर्मूला टिन (Nan Pro / Similac) कम होने पर परिजनों को भेजा जाने वाला विशेष अलर्ट।',
     sampleVars: {
       name: 'पूजा कुमारी',
       medicine: 'Nan Pro Stage 1 (400g Tin)',
@@ -97,12 +97,14 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'overdueTemplate',
-    label: 'Urgent Overdue Alert (Stock Finished)',
-    shortLabel: 'Overdue Alert',
+    language: 'hindi',
+    type: 'overdue',
+    label: 'अति आवश्यक ओवरड्यू अलर्ट (Hindi)',
+    shortLabel: 'ओवरड्यू अलर्ट (Urgent)',
     category: 'Urgent Alert',
     badge: 'High Priority',
     badgeColor: 'bg-red-50 text-red-700 border-red-200',
-    description: 'Sent when patient medicine has completely run out (0 or negative days remaining).',
+    description: 'जब मरीज़ की दवाई पूरी तरह समाप्त हो चुकी हो (0 दिन शेष), तुरंत खुराक जारी रखने हेतु।',
     sampleVars: {
       name: 'सुरेश गुप्ता',
       medicine: 'Thyronorm 50mcg (Bottle of 120)',
@@ -115,20 +117,104 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'outForDeliveryTemplate',
-    label: 'Order Out for Delivery Notification',
+    language: 'hindi',
+    type: 'outForDelivery',
+    label: 'ऑर्डर डिलीवरी के लिए रवाना (Hindi)',
+    shortLabel: 'डिलीवरी रवाना',
+    category: 'Order Dispatch',
+    badge: 'Delivery Tracking',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
+    description: 'जब दवाई पैक करके गाँव के पते के लिए राइडर को सौंपी जाती है।',
+    sampleVars: {
+      name: 'विक्रम महतो',
+      medicine: 'Telvas 40mg & Glycomet GP 1mg',
+      days: 'आज रवाना',
+      date: 'आज',
+      pharmacy: 'Manoj Medical Hall',
+      phone: '+91 98765 43210',
+      address: 'गाँव: गायघाट (निकट पुलिया)',
+    },
+  },
+
+  // 2. English Templates
+  {
+    key: 'englishTemplate',
+    language: 'english',
+    type: 'chronic',
+    label: 'Chronic Refill Reminder (English)',
+    shortLabel: 'Chronic Refill',
+    category: 'Chronic Refill',
+    badge: 'Proactive Alert',
+    badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
+    description: 'Sent 2-3 days before regular chronic medicine runs out in English.',
+    sampleVars: {
+      name: 'Ramesh Kumar',
+      medicine: 'Telma 40mg (Strip of 30)',
+      days: '3 days',
+      date: '08 Sep',
+      pharmacy: 'Manoj Medical Hall',
+      phone: '+91 98765 43210',
+      address: 'Village: Gopalpur, Ward 4 (Near Shiv Mandir)',
+    },
+  },
+  {
+    key: 'englishInfantMilkTemplate',
+    language: 'english',
+    type: 'infantMilk',
+    label: 'Infant Milk Formula Replenishment (English)',
+    shortLabel: 'Infant Formula',
+    category: 'Baby Nutrition',
+    badge: 'Infant Nutrition',
+    badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
+    description: 'Special care reminder for parents whose infant formula tin (Nan Pro / Similac) is low.',
+    sampleVars: {
+      name: 'Pooja Kumari',
+      medicine: 'Nan Pro Stage 1 (400g Tin)',
+      days: '2 days (approx 3 scoops)',
+      date: '07 Sep',
+      pharmacy: 'Manoj Medical Hall',
+      phone: '+91 98765 43210',
+      address: 'Village: Sarfuddinpur (Near Middle School)',
+    },
+  },
+  {
+    key: 'englishOverdueTemplate',
+    language: 'english',
+    type: 'overdue',
+    label: 'Urgent Overdue Alert (English)',
+    shortLabel: 'Overdue Alert',
+    category: 'Urgent Alert',
+    badge: 'High Priority',
+    badgeColor: 'bg-red-50 text-red-700 border-red-200',
+    description: 'Sent when patient medicine has completely run out (0 or negative days remaining).',
+    sampleVars: {
+      name: 'Suresh Gupta',
+      medicine: 'Thyronorm 50mcg (Bottle of 120)',
+      days: 'Finished / 0 days',
+      date: 'Today',
+      pharmacy: 'Manoj Medical Hall',
+      phone: '+91 98765 43210',
+      address: 'Village: Bochahan Main Chowk',
+    },
+  },
+  {
+    key: 'englishOutForDeliveryTemplate',
+    language: 'english',
+    type: 'outForDelivery',
+    label: 'Order Out for Delivery Notification (English)',
     shortLabel: 'Out for Delivery',
     category: 'Order Dispatch',
     badge: 'Delivery Tracking',
     badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
     description: 'Sent to patient when their order has been packed and handed to delivery rider.',
     sampleVars: {
-      name: 'विक्रम महतो',
+      name: 'Vikram Mahto',
       medicine: 'Telvas 40mg & Glycomet GP 1mg',
-      days: 'Dispatched',
+      days: 'Dispatched Today',
       date: 'Today',
       pharmacy: 'Manoj Medical Hall',
       phone: '+91 98765 43210',
-      address: 'गाँव: गायघाट (निकट पुलिया)',
+      address: 'Village: Gaighat (Near Bridge)',
     },
   },
 ];

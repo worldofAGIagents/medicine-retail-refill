@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import {
   Settings, Database, MessageSquare, Truck, Bell, Save, CheckCircle2,
   ShieldCheck, RefreshCw, Loader2, Sparkles, RotateCcw, Copy, Check, Info,
   Smartphone, Eye, Layers, IndianRupee, QrCode, AlertTriangle, KeyRound,
-  User, Mail, Phone, Lock, ExternalLink, Send
+  User, Mail, Phone, Lock, ExternalLink, Send, Upload, UploadCloud,
+  FileText, History, Box, CheckCircle, Pill
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -18,7 +21,7 @@ import {
   TemplateDefinition
 } from '@/lib/templates';
 
-type TabKey = 'admin' | 'whatsapp' | 'upi' | 'refills' | 'marg';
+type TabKey = 'admin' | 'import' | 'whatsapp' | 'upi' | 'refills' | 'marg';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('admin');
@@ -72,11 +75,24 @@ export default function SettingsPage() {
     hindiTemplate: DEFAULT_TEMPLATES.hindiTemplate,
     englishTemplate: DEFAULT_TEMPLATES.englishTemplate,
     infantMilkTemplate: DEFAULT_TEMPLATES.infantMilkTemplate,
+    englishInfantMilkTemplate: DEFAULT_TEMPLATES.englishInfantMilkTemplate,
     overdueTemplate: DEFAULT_TEMPLATES.overdueTemplate,
+    englishOverdueTemplate: DEFAULT_TEMPLATES.englishOverdueTemplate,
     outForDeliveryTemplate: DEFAULT_TEMPLATES.outForDeliveryTemplate,
+    englishOutForDeliveryTemplate: DEFAULT_TEMPLATES.englishOutForDeliveryTemplate,
   });
 
-  // 4. UPI Payment States
+  // 4. MARG Import States
+  const [importType, setImportType] = useState<'medicines' | 'sales' | 'stock'>('medicines');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importCsvData, setImportCsvData] = useState<any[]>([]);
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const [importedStats, setImportedStats] = useState<any>(null);
+  const [importErrorMsg, setImportErrorMsg] = useState('');
+
+  // 5. UPI Payment States
   const [upiId, setUpiId] = useState('manojmedical@okhdfcbank');
   const [upiPayeeName, setUpiPayeeName] = useState('Manoj Medical Hall');
   const [testAmount, setTestAmount] = useState<number>(100);
@@ -97,6 +113,15 @@ export default function SettingsPage() {
 
   // Load all settings on mount with offline-first localStorage fallback
   useEffect(() => {
+    // 0. Check URL query params for active tab (e.g. ?tab=import)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as TabKey;
+      if (tabParam && ['admin', 'import', 'whatsapp', 'upi', 'refills', 'marg'].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
+    }
+
     // 1. Instantly hydrate from localStorage
     try {
       const cachedUpi = localStorage.getItem('manoj_upi_id');
@@ -152,12 +177,19 @@ export default function SettingsPage() {
             preferredLanguage: data.preferredLanguage || 'hindi',
           });
 
+          if (data.preferredLanguage === 'english') {
+            setActiveTemplateKey('englishTemplate');
+          }
+
           setTemplates({
             hindiTemplate: data.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate,
             englishTemplate: data.englishTemplate || DEFAULT_TEMPLATES.englishTemplate,
             infantMilkTemplate: data.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate,
+            englishInfantMilkTemplate: data.englishInfantMilkTemplate || DEFAULT_TEMPLATES.englishInfantMilkTemplate,
             overdueTemplate: data.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
+            englishOverdueTemplate: data.englishOverdueTemplate || DEFAULT_TEMPLATES.englishOverdueTemplate,
             outForDeliveryTemplate: data.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
+            englishOutForDeliveryTemplate: data.englishOutForDeliveryTemplate || DEFAULT_TEMPLATES.englishOutForDeliveryTemplate,
           });
         }
       })
@@ -307,8 +339,11 @@ export default function SettingsPage() {
         hindiTemplate: templates.hindiTemplate,
         englishTemplate: templates.englishTemplate,
         infantMilkTemplate: templates.infantMilkTemplate,
+        englishInfantMilkTemplate: templates.englishInfantMilkTemplate,
         overdueTemplate: templates.overdueTemplate,
+        englishOverdueTemplate: templates.englishOverdueTemplate,
         outForDeliveryTemplate: templates.outForDeliveryTemplate,
+        englishOutForDeliveryTemplate: templates.englishOutForDeliveryTemplate,
         upiId: upiId.trim(),
         upiPayeeName: upiPayeeName.trim() || pharmacyInfo.name,
       };
@@ -354,6 +389,21 @@ export default function SettingsPage() {
     }, 50);
   };
 
+  // Language Switch Handler (syncs active template to matching language variant)
+  const handleSelectLanguage = (lang: 'hindi' | 'english') => {
+    setReminderConfig((prev) => ({ ...prev, preferredLanguage: lang }));
+    const currentDef = TEMPLATE_DEFINITIONS.find((d) => d.key === activeTemplateKey);
+    const currentType = currentDef?.type || 'chronic';
+    const targetDef = TEMPLATE_DEFINITIONS.find(
+      (d) => d.language === lang && d.type === currentType
+    );
+    if (targetDef) {
+      setActiveTemplateKey(targetDef.key);
+    } else {
+      setActiveTemplateKey(lang === 'english' ? 'englishTemplate' : 'hindiTemplate');
+    }
+  };
+
   // Reset current template
   const handleResetTemplate = (key: TemplateKey) => {
     const def = DEFAULT_TEMPLATES[key];
@@ -366,7 +416,7 @@ export default function SettingsPage() {
     ...activeDef.sampleVars,
     pharmacy: pharmacyInfo.name || activeDef.sampleVars.pharmacy,
     phone: pharmacyInfo.phone || activeDef.sampleVars.phone,
-    address: 'Sarfuddinpur (गाँव)',
+    address: activeDef.sampleVars.address || pharmacyInfo.address,
   });
 
   // Send Test WhatsApp to owner mobile
@@ -380,6 +430,104 @@ export default function SettingsPage() {
     window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 
+  // MARG Import Handlers
+  const handleImportFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedFile = e.target.files[0];
+      setImportFile(selectedFile);
+      setImportSuccess(false);
+      setImportErrorMsg('');
+
+      const fileName = selectedFile.name.toLowerCase();
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const bstr = evt.target?.result;
+            const wb = XLSX.read(bstr, { type: 'binary' });
+            const firstSheet = wb.SheetNames[0];
+            const ws = wb.Sheets[firstSheet];
+            const data: any[] = XLSX.utils.sheet_to_json(ws);
+            if (data.length > 0) {
+              setImportHeaders(Object.keys(data[0] as object));
+              setImportCsvData(data);
+            }
+          } catch (err: any) {
+            setImportErrorMsg('Failed to parse Excel file: ' + err.message);
+          }
+        };
+        reader.readAsBinaryString(selectedFile);
+      } else {
+        Papa.parse(selectedFile, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function (results) {
+            if (results.data.length > 0) {
+              setImportHeaders(Object.keys(results.data[0] as object));
+              setImportCsvData(results.data);
+            }
+          },
+        });
+      }
+    }
+  };
+
+  const loadSampleCSV = async (type: 'medicines' | 'sales') => {
+    try {
+      const sampleUrl = type === 'medicines' ? '/sample_marg_medicines.csv' : '/sample_marg_sales.csv';
+      const res = await fetch(sampleUrl);
+      const text = await res.text();
+      setImportType(type);
+      setImportSuccess(false);
+      setImportErrorMsg('');
+
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function (results) {
+          if (results.data.length > 0) {
+            setImportHeaders(Object.keys(results.data[0] as object));
+            setImportCsvData(results.data);
+            setImportFile(
+              new File(
+                [text],
+                type === 'medicines' ? 'sample_marg_medicines.csv' : 'sample_marg_sales.csv',
+                { type: 'text/csv' }
+              )
+            );
+          }
+        },
+      });
+    } catch (e: any) {
+      console.error(e);
+      setImportErrorMsg('Failed loading sample CSV: ' + (e?.message || 'Network error'));
+    }
+  };
+
+  const handleExecuteImport = async () => {
+    if (importCsvData.length === 0) return;
+    setImporting(true);
+    setImportErrorMsg('');
+    try {
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: importType, data: importCsvData }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setImportSuccess(true);
+        setImportedStats(data.results);
+      } else {
+        setImportErrorMsg(data.error || 'Failed to import data');
+      }
+    } catch (err: any) {
+      setImportErrorMsg(err.message || 'Error communicating with server');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // Test MARG Connection
   const handleTestMarg = () => {
     setMargTesting(true);
@@ -391,8 +539,9 @@ export default function SettingsPage() {
     }, 1000);
   };
 
-  const navTabs: { key: TabKey; label: string; icon: any }[] = [
+  const navTabs: { key: TabKey; label: string; icon: any; badge?: string }[] = [
     { key: 'admin', label: 'Admin & Pharmacy', icon: ShieldCheck },
+    { key: 'import', label: 'Import MARG Data', icon: Upload, badge: 'Excel / CSV' },
     { key: 'whatsapp', label: 'WhatsApp Templates', icon: MessageSquare },
     { key: 'upi', label: 'UPI & QR Payments', icon: IndianRupee },
     { key: 'refills', label: 'Refills & Delivery', icon: Truck },
@@ -673,7 +822,260 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* TAB 2: WHATSAPP CONFIG & TEMPLATES */}
+        {/* TAB 2: MARG DATA SYNCHRONIZATION / IMPORT */}
+        {activeTab === 'import' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl p-5 sm:p-7 border border-gray-100 shadow-xs space-y-6">
+              {/* Top Banner */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600 shrink-0">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900 font-heading">
+                      MARG ERP Data Synchronization
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      Extract inventory, pack sizes (10/15 tabs/strip), and chronic patient orders from MARG Excel/CSV
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => loadSampleCSV('medicines')}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-xl text-xs font-semibold border border-teal-200 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Try Sample Medicines</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadSampleCSV('sales')}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-semibold border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Try Sample Sales Register</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid 2-cols: Main Upload + Guide */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                <div className="lg:col-span-2 space-y-5">
+                  {/* Category Type Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      {
+                        id: 'medicines',
+                        title: 'Import Medicines',
+                        icon: <Pill className="w-5 h-5 text-teal-600" />,
+                        desc: 'Item Master (PRO Table) with pack sizes, MRP & salt',
+                        color: 'bg-teal-50 border-teal-500 text-teal-900',
+                      },
+                      {
+                        id: 'sales',
+                        title: 'Import Sales History',
+                        icon: <History className="w-5 h-5 text-blue-600" />,
+                        desc: 'Sales Bills (DIS Table) to detect chronic repeat orders',
+                        color: 'bg-blue-50 border-blue-500 text-blue-900',
+                      },
+                      {
+                        id: 'stock',
+                        title: 'Import Stock / Batches',
+                        icon: <Box className="w-5 h-5 text-emerald-600" />,
+                        desc: 'Batch stock levels (PROBAT Table) with expiry dates',
+                        color: 'bg-emerald-50 border-emerald-500 text-emerald-900',
+                      },
+                    ].map((c) => (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setImportType(c.id as any);
+                          setImportFile(null);
+                          setImportCsvData([]);
+                          setImportSuccess(false);
+                          setImportErrorMsg('');
+                        }}
+                        className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                          importType === c.id
+                            ? c.color + ' shadow-xs'
+                            : 'bg-gray-50/70 border-gray-200 hover:border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        <div className="mb-2">{c.icon}</div>
+                        <h4 className="font-bold text-xs">{c.title}</h4>
+                        <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{c.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Dropzone */}
+                  <div className="bg-gray-50/50 border-2 border-dashed border-gray-300 hover:border-teal-400 rounded-2xl p-6 sm:p-8 text-center transition-colors">
+                    <UploadCloud className="w-10 h-10 mx-auto text-teal-600 mb-2" />
+                    <h3 className="text-sm font-bold text-gray-900 mb-1">
+                      Upload MARG Export (.xlsx, .xls, .csv)
+                    </h3>
+                    <p className="text-xs text-gray-500 mb-4">
+                      Drag &amp; drop your exported Excel file here, or browse local files
+                    </p>
+                    <input
+                      type="file"
+                      id="settingsFileUpload"
+                      accept=".csv, .xlsx, .xls"
+                      className="hidden"
+                      onChange={handleImportFileUpload}
+                    />
+                    <label
+                      htmlFor="settingsFileUpload"
+                      className="inline-block bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition-colors"
+                    >
+                      Browse Excel / CSV Files
+                    </label>
+                  </div>
+
+                  {/* Success Alert */}
+                  {importSuccess && (
+                    <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 rounded-xl flex items-start gap-3 shadow-xs">
+                      <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-bold text-xs sm:text-sm">MARG ERP Import Completed Successfully!</h4>
+                        <p className="text-xs text-emerald-700 mt-0.5">
+                          {importedStats?.medicines ? `Imported/Updated ${importedStats.medicines} medicine records. ` : ''}
+                          {importedStats?.customers ? `Identified ${importedStats.customers} chronic patients. ` : ''}
+                          {importedStats?.prescriptions ? `Generated ${importedStats.prescriptions} auto-refill subscriptions.` : ''}
+                        </p>
+                        <p className="text-[11px] text-emerald-800 font-semibold mt-1.5">
+                          Check Medicines, Customers, and Refills sections to view synced records.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error Alert */}
+                  {importErrorMsg && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 p-3.5 rounded-xl flex items-center gap-2 text-xs font-semibold">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{importErrorMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Preview Table */}
+                  {importFile && !importSuccess && (
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs space-y-3">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-teal-600 shrink-0" />
+                          <div>
+                            <h4 className="font-bold text-xs sm:text-sm text-gray-900">{importFile.name}</h4>
+                            <p className="text-[11px] text-gray-500">{importCsvData.length} records detected in file</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleExecuteImport}
+                          disabled={importing}
+                          className="w-full sm:w-auto justify-center bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-5 py-2 rounded-xl text-xs font-semibold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                        >
+                          {importing ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Importing...</span>
+                            </>
+                          ) : (
+                            <span>Confirm &amp; Ingest Into Database</span>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[550px] text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-600 font-semibold">
+                              {importHeaders.slice(0, 6).map((h) => (
+                                <th key={h} className="p-2 border-b">
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 text-gray-700">
+                            {importCsvData.slice(0, 5).map((row, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50/50">
+                                {importHeaders.slice(0, 6).map((h) => (
+                                  <td key={h} className="p-2 truncate max-w-[140px]">
+                                    {row[h]}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[11px] text-gray-400 italic">Showing top 5 rows preview from uploaded file</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column: Step-by-Step MARG Export Guide */}
+                <div className="space-y-4">
+                  <div className="bg-gray-50/80 rounded-2xl p-4 sm:p-5 border border-gray-200/80 space-y-3">
+                    <h3 className="font-bold text-xs sm:text-sm text-gray-900 font-heading">
+                      How to Export from MARG ERP
+                    </h3>
+                    <ol className="space-y-2.5 text-xs text-gray-600 list-decimal list-inside">
+                      <li className="leading-relaxed">
+                        <strong className="text-gray-800">Item Master (Medicines):</strong>
+                        <p className="pl-4 text-gray-500 text-[11px] mt-0.5">
+                          Masters &gt; Inventory Master &gt; Item Master. Press <code>Alt + P</code> and select <em>Export to Excel/CSV</em>.
+                        </p>
+                      </li>
+                      <li className="leading-relaxed">
+                        <strong className="text-gray-800">Sales Register (Customer History):</strong>
+                        <p className="pl-4 text-gray-500 text-[11px] mt-0.5">
+                          Daily Reports &gt; Sale Report &gt; Sale Register. Filter date range and export as CSV.
+                        </p>
+                      </li>
+                      <li className="leading-relaxed">
+                        <strong className="text-gray-800">Batch Stock &amp; Expiry:</strong>
+                        <p className="pl-4 text-gray-500 text-[11px] mt-0.5">
+                          Stocks &gt; Current Stock &gt; Filter <code>PROBAT</code> and export batch balances.
+                        </p>
+                      </li>
+                      <li className="leading-relaxed">
+                        <strong className="text-gray-800">SQL Query (Fastest):</strong>
+                        <p className="pl-4 text-gray-500 text-[11px] mt-0.5">
+                          Enable SQL Query Executor in Operator powers, query <code>PRO</code> or <code>DIS</code>, and export.
+                        </p>
+                      </li>
+                    </ol>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-2xl p-4 border border-teal-200 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                      Automated Sync
+                    </span>
+                    <h4 className="font-bold text-xs sm:text-sm text-gray-900">MARG API Gateway</h4>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      Prefer automated background sync without manual file exports? Configure your MARG API endpoint under the <strong>MARG ERP Gateway</strong> tab.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('marg')}
+                      className="text-xs font-bold text-teal-700 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Open Gateway Settings</span> &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: WHATSAPP CONFIG & TEMPLATES */}
         {activeTab === 'whatsapp' && (
           <div className="space-y-6">
             {/* Top WhatsApp Control Bar */}
@@ -694,10 +1096,10 @@ export default function SettingsPage() {
                   <span className="text-gray-500 px-2">Language:</span>
                   <button
                     type="button"
-                    onClick={() => setReminderConfig({ ...reminderConfig, preferredLanguage: 'hindi' })}
-                    className={`px-3 py-1 rounded-lg transition-colors ${
+                    onClick={() => handleSelectLanguage('hindi')}
+                    className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
                       reminderConfig.preferredLanguage === 'hindi'
-                        ? 'bg-teal-700 text-white shadow-xs'
+                        ? 'bg-teal-700 text-white shadow-xs font-bold'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
@@ -705,10 +1107,10 @@ export default function SettingsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setReminderConfig({ ...reminderConfig, preferredLanguage: 'english' })}
-                    className={`px-3 py-1 rounded-lg transition-colors ${
+                    onClick={() => handleSelectLanguage('english')}
+                    className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
                       reminderConfig.preferredLanguage === 'english'
-                        ? 'bg-teal-700 text-white shadow-xs'
+                        ? 'bg-teal-700 text-white shadow-xs font-bold'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
@@ -764,30 +1166,39 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Template Switcher Tabs */}
+              {/* Template Switcher Tabs (filtered by active language) */}
               <div className="space-y-2 pt-2">
-                <label className="block text-xs font-semibold text-gray-700">Select Template to Customize</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Select Template to Customize ({reminderConfig.preferredLanguage === 'english' ? '🇬🇧 English' : '🇮🇳 Hindi'})
+                  </label>
+                  <span className="text-[11px] text-teal-700 font-semibold">
+                    {reminderConfig.preferredLanguage === 'english' ? 'English Templates Active' : 'हिंदी टेम्पलेट्स सक्रिय'}
+                  </span>
+                </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-                  {TEMPLATE_DEFINITIONS.map((def) => {
-                    const isSelected = def.key === activeTemplateKey;
-                    return (
-                      <button
-                        key={def.key}
-                        type="button"
-                        onClick={() => setActiveTemplateKey(def.key)}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer border ${
-                          isSelected
-                            ? 'bg-teal-50 border-teal-500 text-teal-900 shadow-xs'
-                            : 'bg-gray-50/70 border-gray-200 text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        <span>{def.shortLabel}</span>
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold border ${def.badgeColor}`}>
-                          {def.category}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  {TEMPLATE_DEFINITIONS
+                    .filter((def) => def.language === reminderConfig.preferredLanguage)
+                    .map((def) => {
+                      const isSelected = def.key === activeTemplateKey;
+                      return (
+                        <button
+                          key={def.key}
+                          type="button"
+                          onClick={() => setActiveTemplateKey(def.key)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer border ${
+                            isSelected
+                              ? 'bg-teal-50 border-teal-500 text-teal-900 shadow-xs ring-1 ring-teal-400/40'
+                              : 'bg-gray-50/70 border-gray-200 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          <span>{def.shortLabel}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold border ${def.badgeColor}`}>
+                            {def.category}
+                          </span>
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
 
@@ -922,7 +1333,9 @@ export default function SettingsPage() {
                     {/* WhatsApp Input Mock */}
                     <div className="bg-[#F0F0F0] px-3 py-2 border-t border-gray-200 flex items-center gap-2 text-[11px] text-gray-400">
                       <div className="bg-white rounded-full px-3 py-1 flex-1 text-gray-400">
-                        Reply YES for village delivery...
+                        {reminderConfig.preferredLanguage === 'english'
+                          ? 'Reply YES for village delivery...'
+                          : 'गाँव में डिलीवरी के लिए YES भेजें...'}
                       </div>
                       <div className="w-6 h-6 rounded-full bg-[#128C7E] text-white flex items-center justify-center font-bold text-xs">
                         ➤

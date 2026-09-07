@@ -41,8 +41,11 @@ export async function GET(request: Request) {
       hindiTemplate: settings.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate,
       englishTemplate: settings.englishTemplate || DEFAULT_TEMPLATES.englishTemplate,
       infantMilkTemplate: settings.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate,
+      englishInfantMilkTemplate: settings.englishInfantMilkTemplate || DEFAULT_TEMPLATES.englishInfantMilkTemplate,
       overdueTemplate: settings.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate,
+      englishOverdueTemplate: settings.englishOverdueTemplate || DEFAULT_TEMPLATES.englishOverdueTemplate,
       outForDeliveryTemplate: settings.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
+      englishOutForDeliveryTemplate: settings.englishOutForDeliveryTemplate || DEFAULT_TEMPLATES.englishOutForDeliveryTemplate,
       upiId: process.env.SHOP_UPI_ID || settings.upiId || 'manojmedical@okhdfcbank',
       upiPayeeName: process.env.SHOP_UPI_PAYEE || settings.upiPayeeName || settings.pharmacyName || 'Manoj Medical Hall',
     };

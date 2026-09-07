@@ -18,7 +18,6 @@ const navItems = [
   { name: 'Daily Delivery PDF', href: '/delivery-sheet', icon: Printer },
   { name: 'Instant UPI QR', href: '/quick-qr', icon: QrCode },
   { name: 'Orders', href: '/orders', icon: Package },
-  { name: 'Import Data', href: '/import', icon: Upload },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

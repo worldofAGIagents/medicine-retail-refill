@@ -317,20 +317,28 @@ export default function RefillsPage() {
         ? (settings?.englishTemplate || DEFAULT_TEMPLATES.englishTemplate)
         : (settings?.hindiTemplate || DEFAULT_TEMPLATES.hindiTemplate);
 
-      if (isMilk && (settings?.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate)) {
-        template = settings?.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate;
-      } else if (isOverdue && (settings?.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate)) {
-        template = settings?.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate;
+      if (isMilk) {
+        template = preferredLang === 'english'
+          ? (settings?.englishInfantMilkTemplate || DEFAULT_TEMPLATES.englishInfantMilkTemplate)
+          : (settings?.infantMilkTemplate || DEFAULT_TEMPLATES.infantMilkTemplate);
+      } else if (isOverdue) {
+        template = preferredLang === 'english'
+          ? (settings?.englishOverdueTemplate || DEFAULT_TEMPLATES.englishOverdueTemplate)
+          : (settings?.overdueTemplate || DEFAULT_TEMPLATES.overdueTemplate);
       }
 
       const refillDateFormatted = current.refillCalc.nextRefillDate
         ? new Date(current.refillCalc.nextRefillDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
         : '2-3 days';
 
+      const daysLabel = preferredLang === 'english'
+        ? (isOverdue ? 'Finished / 0 days' : `${current.refillCalc.daysRemaining} days`)
+        : (isOverdue ? 'समाप्त' : `${current.refillCalc.daysRemaining} दिन`);
+
       const message = renderTemplate(template || '', {
         name: current.customer.name,
         medicine: current.medicine.name,
-        days: isOverdue ? 'समाप्त' : `${current.refillCalc.daysRemaining} दिन`,
+        days: daysLabel,
         date: refillDateFormatted,
         pharmacy: settings?.pharmacyName || pharmacyName,
         phone: settings?.phone || '',
