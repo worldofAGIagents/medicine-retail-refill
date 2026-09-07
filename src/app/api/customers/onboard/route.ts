@@ -85,8 +85,17 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Process each medicine: dynamically categorize & create prescription
+    // Deduplicate medList by medicineId to guarantee zero duplicate prescriptions
+    const uniqueMedMap = new Map<string, any>();
     for (const item of medList) {
+      if (item.medicineId) {
+        uniqueMedMap.set(item.medicineId, item);
+      }
+    }
+    const dedupedMedList = Array.from(uniqueMedMap.values());
+
+    // 3. Process each medicine: dynamically categorize & create prescription
+    for (const item of dedupedMedList) {
       if (!item.medicineId) continue;
       const med = await db.medicine.findUnique({ where: { id: item.medicineId } });
       if (!med) continue;
@@ -124,24 +133,59 @@ export async function POST(request: Request) {
         bufferDays: buffer,
       });
 
-      const presc = await db.prescription.create({
-        data: {
+      const prescriptionData = {
+        dailyDosage: dose,
+        lastPurchaseDate: purchaseDateObj,
+        lastPurchaseQty: qty,
+        nextRefillDate: refillCalc.nextRefillDate,
+        bufferDays: buffer,
+        doctorName: item.doctorName || doctorName || null,
+        customPackaging: item.customPackaging || (primaryCondition === 'Infant Milk' ? '400g Tin' : `${med.unitsPerPack} tabs/strip`),
+        unitType: primaryCondition === 'Infant Milk' ? 'grams' : (item.unitType || 'tablets'),
+        isActive: true,
+      };
+
+      // Check for existing active prescription for this medicine to avoid duplicates
+      const existingPrescription = await db.prescription.findFirst({
+        where: {
           customerId: customer.id,
           medicineId: item.medicineId,
-          dailyDosage: dose,
-          lastPurchaseDate: purchaseDateObj,
-          lastPurchaseQty: qty,
-          nextRefillDate: refillCalc.nextRefillDate,
-          bufferDays: buffer,
-          doctorName: item.doctorName || doctorName || null,
-          customPackaging: item.customPackaging || (primaryCondition === 'Infant Milk' ? '400g Tin' : `${med.unitsPerPack} tabs/strip`),
-          unitType: primaryCondition === 'Infant Milk' ? 'grams' : (item.unitType || 'tablets'),
           isActive: true,
         },
-        include: {
-          medicine: true,
-        },
       });
+
+      let presc;
+      if (existingPrescription) {
+        presc = await db.prescription.update({
+          where: { id: existingPrescription.id },
+          data: prescriptionData,
+          include: { medicine: true },
+        });
+
+        // Clean up any historical duplicate prescriptions for this customer & medicine
+        const duplicates = await db.prescription.findMany({
+          where: {
+            customerId: customer.id,
+            medicineId: item.medicineId,
+            id: { not: existingPrescription.id },
+          },
+        });
+        if (duplicates.length > 0) {
+          await db.prescription.deleteMany({
+            where: { id: { in: duplicates.map((d) => d.id) } },
+          });
+        }
+      } else {
+        presc = await db.prescription.create({
+          data: {
+            customerId: customer.id,
+            medicineId: item.medicineId,
+            ...prescriptionData,
+          },
+          include: { medicine: true },
+        });
+      }
+
       createdPrescriptions.push(presc);
     }
 

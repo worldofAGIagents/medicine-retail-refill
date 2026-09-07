@@ -69,54 +69,87 @@ export default function RefillsPage() {
 
   const loadRefills = () => {
     setLoading(true);
+
+    // Helper to deduplicate refills by customer + medicine
+    const dedupeRefills = (items: RefillItem[]): RefillItem[] => {
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        const cKey = item.customer?.phone || item.customer?.id || item.customer?.name || '';
+        const mKey = item.medicine?.name || item.medicine?.id || '';
+        const combined = `${cKey}::${mKey}`;
+        if (!combined || seen.has(combined)) return false;
+        seen.add(combined);
+        return true;
+      });
+    };
+
     fetch('/api/refills')
       .then((res) => res.json())
       .then((data) => {
         let list: RefillItem[] = Array.isArray(data) ? data : [];
+        
+        // If server list is empty, generate refills preview from local storage safely without mutating server
         if (list.length === 0) {
           try {
             const raw = localStorage.getItem('manoj_local_customers');
             if (raw) {
               const localList = JSON.parse(raw);
               if (Array.isArray(localList) && localList.length > 0) {
-                // Auto reseed to server in background
-                localList.forEach((mc: any) => {
-                  fetch('/api/customers/onboard', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      name: mc.name,
-                      phone: mc.phone,
-                      altPhone: mc.altPhone,
-                      address: mc.address,
-                      locality: mc.locality,
-                      city: mc.city || 'Muzaffarpur',
-                      primaryCondition: mc.primaryCondition,
-                      medicines: mc.prescriptions?.map((p: any) => ({
-                        medicineId: p.medicine?.id,
-                        dailyDosage: p.dailyDosage,
-                        lastPurchaseQty: p.lastPurchaseQty || 30,
-                        customPackaging: p.customPackaging,
-                        unitType: 'tablets',
-                      })) || [],
-                    }),
-                  }).then(() => {
-                    // Refetch refills after reseed
-                    fetch('/api/refills')
-                      .then((r) => r.json())
-                      .then((refreshed) => {
-                        if (Array.isArray(refreshed) && refreshed.length > 0) {
-                          setRefillsList(refreshed);
-                        }
-                      })
-                      .catch(() => {});
-                  }).catch(() => {});
+                const clientRefills: RefillItem[] = [];
+                localList.forEach((cust: any) => {
+                  (cust.prescriptions || []).forEach((p: any, idx: number) => {
+                    const refillDateStr = p.nextRefillDate || new Date().toISOString();
+                    const diffDays = Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = 'ok';
+                    if (diffDays <= 0) urgency = 'overdue';
+                    else if (diffDays <= 2) urgency = 'urgent';
+                    else if (diffDays <= 5) urgency = 'due_soon';
+                    else if (diffDays <= 10) urgency = 'ok';
+                    else urgency = 'future';
+
+                    clientRefills.push({
+                      id: p.id || `local-refill-${cust.id}-${idx}`,
+                      dailyDosage: Number(p.dailyDosage) || 1,
+                      lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
+                      lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
+                      nextRefillDate: refillDateStr,
+                      customPackaging: p.customPackaging,
+                      unitType: p.unitType || 'tablets',
+                      customer: {
+                        id: cust.id,
+                        name: cust.name,
+                        phone: cust.phone,
+                        address: cust.address,
+                        city: cust.city,
+                      },
+                      medicine: {
+                        id: p.medicine?.id || `med-${idx}`,
+                        name: p.medicine?.name || 'Medicine',
+                        genericName: p.medicine?.genericName || '',
+                        category: p.medicine?.category || 'Chronic',
+                        unitsPerPack: p.medicine?.unitsPerPack || 10,
+                        mrp: p.medicine?.mrp || 0,
+                      },
+                      refillCalc: {
+                        daysRemaining: diffDays,
+                        urgency,
+                        nextRefillDate: refillDateStr,
+                      },
+                    });
+                  });
                 });
+                list = clientRefills;
               }
             }
-          } catch (e) {}
+          } catch (e) {
+            console.warn('Local refill parse error:', e);
+          }
         }
-        setRefillsList(list);
+
+        const cleanList = dedupeRefills(list).sort(
+          (a, b) => a.refillCalc.daysRemaining - b.refillCalc.daysRemaining
+        );
+        setRefillsList(cleanList);
         setLoading(false);
       })
       .catch(() => setLoading(false));

@@ -2,17 +2,22 @@
 
 import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Phone, MapPin, Pill, X, Check, Eye, UserPlus, Heart, Sparkles } from 'lucide-react';
+import { Search, Plus, Phone, MapPin, Pill, X, Check, Eye, UserPlus, Heart, Sparkles, Calendar, Clock } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 
 interface PrescriptionWithMedicine {
   id: string;
   dailyDosage: number;
   nextRefillDate: string | null;
+  lastPurchaseQty?: number;
+  customPackaging?: string;
   medicine: {
+    id?: string;
     name: string;
     category: string;
     genericName: string;
+    unitsPerPack?: number;
+    mrp?: number;
   };
 }
 
@@ -29,6 +34,21 @@ interface Customer {
   prescriptions: PrescriptionWithMedicine[];
 }
 
+// Guarantee zero duplicate prescriptions per customer
+function sanitizeCustomer(c: Customer): Customer {
+  const seenMeds = new Set<string>();
+  const cleanPrescriptions = (c.prescriptions || []).filter((p) => {
+    const medKey = (p.medicine?.name || (p.medicine as any)?.id || p.id || '').trim().toLowerCase();
+    if (!medKey || seenMeds.has(medKey)) return false;
+    seenMeds.add(medKey);
+    return true;
+  });
+  return {
+    ...c,
+    prescriptions: cleanPrescriptions,
+  };
+}
+
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,15 +58,18 @@ export default function CustomersPage() {
   const [category, setCategory] = useState('All');
 
   const loadCustomers = () => {
-    // 1. Instantly load from local storage so customer data NEVER vanishes on container cold starts
+    // 1. Instantly load from local storage & sanitize duplicates in-place
     let localList: Customer[] = [];
     try {
       const raw = localStorage.getItem('manoj_local_customers');
       if (raw) {
-        localList = JSON.parse(raw);
-        if (Array.isArray(localList) && localList.length > 0) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          localList = parsed.map(sanitizeCustomer);
           setCustomers(localList);
           setLoading(false);
+          // Auto-clean localStorage so duplicates like Alok's 4 prescriptions collapse to 2
+          localStorage.setItem('manoj_local_customers', JSON.stringify(localList));
         }
       }
     } catch (e) {
@@ -57,14 +80,27 @@ export default function CustomersPage() {
     fetch('/api/customers')
       .then((res) => res.json())
       .then((serverData) => {
-        const sList: Customer[] = Array.isArray(serverData) ? serverData : [];
-        const serverPhones = new Set(sList.map((c) => c.phone));
+        const rawSList: Customer[] = Array.isArray(serverData) ? serverData : [];
+        const sList = rawSList.map(sanitizeCustomer);
+        const serverPhones = new Set(sList.map((c) => c.phone.replace(/[^0-9]/g, '').slice(-10)));
 
         // Detect if any local customer is missing on the server (e.g. fresh lambda container)
-        const missingOnServer = localList.filter((lc) => !serverPhones.has(lc.phone));
+        const missingOnServer = localList.filter((lc) => {
+          const p = lc.phone.replace(/[^0-9]/g, '').slice(-10);
+          return !serverPhones.has(p);
+        });
+
         if (missingOnServer.length > 0) {
-          // Auto-reseed server in the background
+          // Auto-reseed server with deduplicated medicines only
           missingOnServer.forEach((mc) => {
+            const cleanMeds = mc.prescriptions?.map((p) => ({
+              medicineId: (p.medicine as any)?.id,
+              dailyDosage: p.dailyDosage,
+              lastPurchaseQty: p.lastPurchaseQty || 30,
+              customPackaging: p.customPackaging,
+              unitType: 'tablets',
+            })) || [];
+
             fetch('/api/customers/onboard', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -76,30 +112,26 @@ export default function CustomersPage() {
                 locality: mc.locality,
                 city: mc.city || 'Muzaffarpur',
                 primaryCondition: mc.primaryCondition,
-                medicines: mc.prescriptions?.map((p) => ({
-                  medicineId: (p.medicine as any)?.id,
-                  dailyDosage: p.dailyDosage,
-                  lastPurchaseQty: (p as any).lastPurchaseQty || 30,
-                  customPackaging: (p as any).customPackaging,
-                  unitType: 'tablets',
-                })) || [],
+                medicines: cleanMeds,
               }),
             }).catch((err) => console.warn('Reseed warning for', mc.name, err));
           });
         }
 
-        // Merge: server list takes precedence for updated status, local holds unpersisted
+        // Merge server list & local list by clean 10-digit phone
         const merged = [...sList];
         localList.forEach((lc) => {
-          if (!merged.some((m) => m.phone === lc.phone)) {
+          const lPhone = lc.phone.replace(/[^0-9]/g, '').slice(-10);
+          if (!merged.some((m) => m.phone.replace(/[^0-9]/g, '').slice(-10) === lPhone)) {
             merged.push(lc);
           }
         });
 
-        setCustomers(merged);
-        if (merged.length > 0) {
+        const cleanMerged = merged.map(sanitizeCustomer);
+        setCustomers(cleanMerged);
+        if (cleanMerged.length > 0) {
           try {
-            localStorage.setItem('manoj_local_customers', JSON.stringify(merged));
+            localStorage.setItem('manoj_local_customers', JSON.stringify(cleanMerged));
           } catch (e) {
             console.warn('Failed updating localStorage cache:', e);
           }
@@ -145,11 +177,13 @@ export default function CustomersPage() {
   return (
     <DashboardLayout>
       <div className="p-2 md:p-4 max-w-7xl mx-auto">
-        {/* Header */}
+        {/* Clean Header Without Redundant Banner */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Chronic Medicine Customers</h1>
-            <p className="text-xs sm:text-sm text-gray-500">Manoj Medical Hall • Sarfuddinpur, Muzaffarpur • 10–20 KM village repeat refills</p>
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Chronic Patients Roster</h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+              Active chronic prescriptions, refill target countdowns &amp; village delivery profiles
+            </p>
           </div>
           <button
             onClick={() => setShowOnboardModal(true)}
@@ -159,7 +193,7 @@ export default function CustomersPage() {
           </button>
         </div>
 
-        {/* Filter bar */}
+        {/* Filter & Search Bar */}
         <div className="flex flex-col md:flex-row gap-4 mb-6 justify-between items-start md:items-center">
           <div className="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto">
             {categories.map((c) => (
@@ -180,7 +214,7 @@ export default function CustomersPage() {
             <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Search by name, phone, address..."
+              placeholder="Search by name, phone, village..."
               className="pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -191,15 +225,15 @@ export default function CustomersPage() {
         {/* Customer Table Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-gray-400">Loading customers...</div>
+            <div className="p-12 text-center text-gray-400">Loading patients...</div>
           ) : filteredCustomers.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-3">
                 <Heart className="w-6 h-6" />
               </div>
-              <p className="text-base font-semibold text-gray-800">No customers found</p>
+              <p className="text-base font-semibold text-gray-800">No chronic patients found</p>
               <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-                Onboard a customer with a condition (BP, Diabetes, etc.) and medicine to start automatic refill tracking.
+                Onboard a patient with BP, Diabetes, Thyroid or baby food to start automatic refill tracking.
               </p>
               <button
                 onClick={() => setShowOnboardModal(true)}
@@ -213,8 +247,8 @@ export default function CustomersPage() {
               <table className="w-full min-w-[750px] text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <th className="py-3.5 px-6">Customer &amp; Condition</th>
-                    <th className="py-3.5 px-4">Contact Info</th>
+                    <th className="py-3.5 px-6">Patient &amp; Condition</th>
+                    <th className="py-3.5 px-4">Contact &amp; Village</th>
                     <th className="py-3.5 px-4">Active Medicines</th>
                     <th className="py-3.5 px-4 text-center">Prescriptions</th>
                     <th className="py-3.5 px-4">Next Refill Date</th>
@@ -231,18 +265,25 @@ export default function CustomersPage() {
                       .slice(0, 2)
                       .toUpperCase();
 
-                    // Find nearest refill date
+                    // Find nearest refill date & days remaining
                     let nearestRefillDateStr: string | null = null;
+                    let daysLeft: number | null = null;
+
                     c.prescriptions?.forEach((p) => {
                       if (p.nextRefillDate) {
                         if (!nearestRefillDateStr || new Date(p.nextRefillDate) < new Date(nearestRefillDateStr)) {
                           nearestRefillDateStr = p.nextRefillDate;
+                          daysLeft = Math.ceil((new Date(p.nextRefillDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         }
                       }
                     });
 
+                    // Single clean village name without repetition
+                    const villageName = c.locality || (c.address ? c.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
+
                     return (
                       <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
+                        {/* 1. Patient Name + Condition Pill */}
                         <td className="py-3.5 px-6">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-xs shrink-0">
@@ -256,84 +297,104 @@ export default function CustomersPage() {
                                     {c.primaryCondition}
                                   </span>
                                 )}
-                                {c.locality && (
-                                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
-                                    📍 {c.locality}
-                                  </span>
-                                )}
                               </div>
-                              <p className="text-xs text-gray-400">
-                                {c.locality ? `${c.locality}, ` : ''}{c.city || 'Muzaffarpur'}
+                              <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                                ID: #{c.id.replace('local-', '').slice(-6)}
                               </p>
                             </div>
                           </div>
                         </td>
+
+                        {/* 2. Contact & Village (Zero Duplication) */}
                         <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5 text-gray-700 font-medium">
-                            <Phone className="w-3.5 h-3.5 text-gray-400" />
+                          <div className="flex items-center gap-1.5 text-gray-800 font-medium text-xs">
+                            <Phone className="w-3.5 h-3.5 text-teal-600 shrink-0" />
                             <span>{c.phone}</span>
                             {c.whatsappEnabled && (
-                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.2 rounded font-semibold">
+                              <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.2 rounded font-bold">
                                 WA
                               </span>
                             )}
                           </div>
                           {c.altPhone && (
-                            <div className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
-                              <span className="text-gray-400 font-medium">Alt:</span>
-                              <span>{c.altPhone}</span>
+                            <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
+                              <span>Alt: {c.altPhone}</span>
                             </div>
                           )}
-                          {c.address && (
-                            <div className="flex items-center gap-1 text-xs text-gray-400 truncate max-w-xs mt-0.5">
-                              <MapPin className="w-3 h-3 text-gray-300 shrink-0" />
-                              <span className="truncate">{c.address}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 text-xs text-amber-900 font-medium mt-1">
+                            <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span className="bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[11px]">
+                              {villageName}
+                            </span>
+                          </div>
                         </td>
+
+                        {/* 3. Active Medicines (Unique, with dosage) */}
                         <td className="py-3.5 px-4">
                           <div className="flex flex-wrap gap-1.5 max-w-xs">
                             {c.prescriptions && c.prescriptions.length > 0 ? (
                               c.prescriptions.map((p, idx) => (
                                 <span
                                   key={idx}
-                                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-100"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 text-teal-800 border border-teal-100"
                                 >
-                                  {p.medicine?.name}
+                                  <Pill className="w-3 h-3 text-teal-600 shrink-0" />
+                                  <span>{p.medicine?.name}</span>
+                                  <span className="text-[10px] text-teal-600 font-bold">({p.dailyDosage}/day)</span>
                                 </span>
                               ))
                             ) : (
-                              <span className="text-xs text-gray-400">No active prescriptions</span>
+                              <span className="text-xs text-gray-400">No active medicines</span>
                             )}
                           </div>
                         </td>
+
+                        {/* 4. Unique Prescriptions Count */}
                         <td className="py-3.5 px-4 text-center">
-                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-800 text-xs font-bold">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-xs font-bold">
                             {c.prescriptions?.length || 0}
                           </span>
                         </td>
+
+                        {/* 5. Nearest Next Refill Date with Countdown */}
                         <td className="py-3.5 px-4">
                           {nearestRefillDateStr ? (
                             <div>
-                              <p className="text-xs font-semibold text-gray-800">
+                              <p className="text-xs font-bold text-gray-900">
                                 {new Date(nearestRefillDateStr).toLocaleDateString('en-IN', {
                                   day: 'numeric',
                                   month: 'short',
                                   year: 'numeric',
                                 })}
                               </p>
-                              <span className="text-[10px] text-teal-600 font-medium">Auto-Refill Active</span>
+                              <span
+                                className={`inline-block mt-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                  daysLeft !== null && daysLeft <= 2
+                                    ? 'bg-red-50 text-red-700 border border-red-200'
+                                    : daysLeft !== null && daysLeft <= 7
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                }`}
+                              >
+                                {daysLeft !== null && daysLeft <= 0
+                                  ? `${Math.abs(daysLeft)}d overdue`
+                                  : daysLeft !== null && daysLeft <= 7
+                                  ? `Due in ${daysLeft} days`
+                                  : 'Auto-Refill Active'}
+                              </span>
                             </div>
                           ) : (
                             <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
+
+                        {/* 6. Actions */}
                         <td className="py-3.5 px-4 text-right">
                           <button
                             onClick={() => setViewCustomer(c)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer border border-teal-100"
                           >
-                            <Eye className="w-3.5 h-3.5" /> View
+                            <Eye className="w-3.5 h-3.5" /> Details
                           </button>
                         </td>
                       </tr>
@@ -345,7 +406,7 @@ export default function CustomersPage() {
           )}
 
           <div className="p-4 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500">
-            <span>Showing {filteredCustomers.length} chronic customers</span>
+            <span>Showing {filteredCustomers.length} chronic patient(s)</span>
           </div>
         </div>
 
@@ -384,22 +445,26 @@ export default function CustomersPage() {
                 )}
 
                 <div>
-                  <span className="text-xs text-gray-400 uppercase font-semibold">Delivery Village &amp; Landmark</span>
+                  <span className="text-xs text-gray-400 uppercase font-semibold">Delivery Village &amp; Address</span>
                   <p className="text-gray-700 font-medium mt-0.5">
                     {viewCustomer.locality ? `Village: ${viewCustomer.locality}` : ''}
-                    {viewCustomer.address ? ` (${viewCustomer.address})` : ''}
+                    {viewCustomer.address && viewCustomer.address !== viewCustomer.locality ? ` (${viewCustomer.address})` : ''}
                     {viewCustomer.city ? `, ${viewCustomer.city}` : ', Muzaffarpur'}
                   </p>
                 </div>
 
                 <div>
-                  <span className="text-xs text-gray-400 uppercase font-semibold">Chronic Prescriptions ({viewCustomer.prescriptions?.length || 0})</span>
+                  <span className="text-xs text-gray-400 uppercase font-semibold">
+                    Prescribed Medicines ({viewCustomer.prescriptions?.length || 0})
+                  </span>
                   <div className="mt-2 space-y-2">
                     {viewCustomer.prescriptions?.map((p, idx) => (
                       <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
                         <div>
                           <p className="font-semibold text-gray-900">{p.medicine?.name}</p>
-                          <p className="text-xs text-gray-500">{p.medicine?.genericName} • {p.dailyDosage} tablet/day</p>
+                          <p className="text-xs text-gray-500">
+                            {p.medicine?.genericName || ''} • {p.dailyDosage} dose/day • {p.customPackaging || 'Strips'}
+                          </p>
                         </div>
                         <div className="text-right">
                           <span className="text-xs font-bold text-teal-700">

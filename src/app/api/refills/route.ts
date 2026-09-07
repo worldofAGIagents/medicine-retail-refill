@@ -8,10 +8,21 @@ export const revalidate = 0;
 export async function GET(request: Request) {
   const prescriptions = await db.prescription.findMany({
     where: { isActive: true, lastPurchaseDate: { not: null }, lastPurchaseQty: { not: null } },
-    include: { customer: true, medicine: true }
+    include: { customer: true, medicine: true },
+    orderBy: { updatedAt: 'desc' },
   });
 
-  const refills = prescriptions.map(p => {
+  // Deduplicate by customerId + medicineId to guarantee zero duplicate refill entries
+  const seenMap = new Map<string, (typeof prescriptions)[0]>();
+  for (const p of prescriptions) {
+    const key = `${p.customerId}-${p.medicineId}`;
+    if (!seenMap.has(key)) {
+      seenMap.set(key, p);
+    }
+  }
+  const uniquePrescriptions = Array.from(seenMap.values());
+
+  const refills = uniquePrescriptions.map(p => {
     const calc = calculateRefill({
       lastPurchaseDate: p.lastPurchaseDate!,
       lastPurchaseQty: p.lastPurchaseQty!,

@@ -27,7 +27,22 @@ export async function GET(request: Request) {
     take: 100,
     orderBy: { createdAt: 'desc' }
   });
-  return NextResponse.json(customers);
+
+  const sanitized = customers.map((c) => {
+    const seenMed = new Set<string>();
+    const dedupedPrescriptions = c.prescriptions.filter((p) => {
+      const medKey = p.medicineId || p.medicine?.name;
+      if (!medKey || seenMed.has(medKey)) return false;
+      seenMed.add(medKey);
+      return true;
+    });
+    return {
+      ...c,
+      prescriptions: dedupedPrescriptions,
+    };
+  });
+
+  return NextResponse.json(sanitized);
 }
 
 export async function POST(request: Request) {

@@ -239,6 +239,16 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
     setSaving(true);
     try {
       const villageAddress = `गाँव: ${village.trim()}${landmark.trim() ? ', ' + landmark.trim() : ''}`;
+
+      // Deduplicate prescribed medicines to guarantee zero duplicate prescriptions
+      const seenMedIds = new Set<string>();
+      const dedupedMeds = prescribedMeds.filter((item) => {
+        const key = (item.medicine.name || item.medicine.id).trim().toLowerCase();
+        if (seenMedIds.has(key)) return false;
+        seenMedIds.add(key);
+        return true;
+      });
+
       const payload = {
         name: name.trim(),
         phone: cleanPhone,
@@ -247,7 +257,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         locality: village.trim(),
         city: 'Muzaffarpur',
         primaryCondition: condition,
-        medicines: prescribedMeds.map((item) => {
+        medicines: dedupedMeds.map((item) => {
           const packUnits = (item.customUnitsPerPack && item.customUnitsPerPack > 0)
             ? item.customUnitsPerPack
             : (item.medicine.unitsPerPack > 0 ? item.medicine.unitsPerPack : 10);
@@ -286,7 +296,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         primaryCondition: condition,
         whatsappEnabled: true,
         createdAt: new Date().toISOString(),
-        prescriptions: prescribedMeds.map((item, pIdx) => {
+        prescriptions: dedupedMeds.map((item, pIdx) => {
           const packUnits = item.customUnitsPerPack || item.medicine.unitsPerPack || 10;
           const preview = getRefillPreview(item);
           return {
