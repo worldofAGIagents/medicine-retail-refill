@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { calculateRefill } from '@/lib/refill-engine';
+import { detectMedicineCategory, normalizeChronicCategory, DEFAULT_CHRONIC_CATEGORY } from '@/lib/medicine-classifier';
 
 export async function POST(request: Request) {
   try {
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
       unitType = 'tablets',
     } = body;
 
-    const primaryCondition = rawCondition || condition || 'General';
+    const primaryCondition = normalizeChronicCategory(rawCondition || condition);
 
     if (!name || !phone) {
       return NextResponse.json({ error: 'Patient name and phone number are required' }, { status: 400 });
@@ -108,10 +109,16 @@ export async function POST(request: Request) {
       if (item.customUnitsPerPack && Number(item.customUnitsPerPack) > 0) {
         medUpdates.unitsPerPack = Number(item.customUnitsPerPack);
       }
-      if (primaryCondition && primaryCondition !== 'General') {
-        medUpdates.category = primaryCondition;
-        medUpdates.isChronicMed = true;
+      
+      // Dynamic category learning:
+      // If medicine item has an explicit category, use it. Otherwise detect dynamically.
+      // If unclassified or deselected, default to 'Blood Pressure'.
+      const learnedCat = item.category || detectMedicineCategory(med.name, med.genericName, med.saltComposition);
+      if (!med.category || med.category === 'General' || med.category === 'Uncategorized' || item.category) {
+        medUpdates.category = learnedCat || DEFAULT_CHRONIC_CATEGORY;
       }
+      medUpdates.isChronicMed = true;
+
       if (Object.keys(medUpdates).length > 0) {
         await db.medicine.update({
           where: { id: item.medicineId },

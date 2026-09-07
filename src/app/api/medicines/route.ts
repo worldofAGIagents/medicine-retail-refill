@@ -45,7 +45,22 @@ export async function GET(request: Request) {
       }
     }
 
-    const total = await db.medicine.count({ where });
+    let finalWhere = where;
+    let total = await db.medicine.count({ where: finalWhere });
+
+    // Non-blocking fallback: If query with category filter yields 0 matches, search across all categories
+    if (total === 0 && query && category && category !== 'All') {
+      finalWhere = {
+        OR: [
+          { name: { contains: query } },
+          { genericName: { contains: query } },
+          { manufacturer: { contains: query } },
+          { margItemCode: { contains: query } },
+          { saltComposition: { contains: query } },
+        ]
+      };
+      total = await db.medicine.count({ where: finalWhere });
+    }
 
     let medicines: any[] = [];
 
@@ -53,7 +68,7 @@ export async function GET(request: Request) {
       const qLower = query.toLowerCase();
       // Fetch matching candidates up to 500
       const candidates = await db.medicine.findMany({
-        where,
+        where: finalWhere,
         take: 500,
       });
 
@@ -100,7 +115,7 @@ export async function GET(request: Request) {
       medicines = fetchAll ? candidates : candidates.slice(startIndex, startIndex + limit);
     } else {
       medicines = await db.medicine.findMany({
-        where,
+        where: finalWhere,
         orderBy: { name: 'asc' },
         skip: fetchAll ? undefined : (page - 1) * limit,
         take: fetchAll ? (limit ? limit : undefined) : limit,

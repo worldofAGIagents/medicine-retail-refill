@@ -3,8 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X, UserPlus, Phone, MapPin, Search, CheckCircle2,
-  AlertCircle, Pill, Calendar, Clock, Heart, Sparkles, Plus, Minus, Trash2, Layers
+  AlertCircle, Pill, Calendar, Clock, Heart, Sparkles, Plus, Minus, Trash2, Layers, RotateCcw
 } from 'lucide-react';
+import {
+  detectMedicineCategory,
+  CHRONIC_CONDITIONS_LIST,
+  DEFAULT_CHRONIC_CATEGORY,
+  normalizeChronicCategory
+} from '@/lib/medicine-classifier';
 
 interface Medicine {
   id: string;
@@ -20,6 +26,7 @@ interface Medicine {
 
 export interface PrescribedMedicineItem {
   medicine: Medicine;
+  category?: string;
   unitMode: 'strips' | 'tablets' | 'tins';
   stripCount: number;
   totalQty: number;
@@ -35,17 +42,7 @@ interface OnboardPatientModalProps {
   onSuccess?: () => void;
 }
 
-const CONDITIONS = [
-  { id: 'Blood Pressure', label: 'Blood Pressure (BP)', color: 'bg-red-50 text-red-700 border-red-200' },
-  { id: 'Diabetes', label: 'Diabetes', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { id: 'Thyroid', label: 'Thyroid', color: 'bg-purple-50 text-purple-700 border-purple-200' },
-  { id: 'Heart', label: 'Cardiac / Heart', color: 'bg-rose-50 text-rose-700 border-rose-200' },
-  { id: 'Infant Milk', label: 'Infant Formula / Baby Milk', color: 'bg-pink-50 text-pink-700 border-pink-200' },
-  { id: 'Cholesterol', label: 'Cholesterol', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-  { id: 'Respiratory', label: 'Asthma / Respiratory', color: 'bg-sky-50 text-sky-700 border-sky-200' },
-  { id: 'Gastric', label: 'Gastric / GI', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { id: 'General', label: 'Other Chronic', color: 'bg-gray-50 text-gray-700 border-gray-200' },
-];
+const CONDITIONS = CHRONIC_CONDITIONS_LIST;
 
 export const LOCAL_VILLAGES = [
   'Sarfuddinpur',
@@ -67,7 +64,9 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
   const [village, setVillage] = useState('Sarfuddinpur');
   const [landmark, setLandmark] = useState('');
   const [altPhone, setAltPhone] = useState('');
-  const [condition, setCondition] = useState('Blood Pressure');
+  // Default to Blood Pressure (BP) as required
+  const [condition, setCondition] = useState<string>('Blood Pressure');
+  const [conditionManuallySelected, setConditionManuallySelected] = useState(false);
 
   // Multi-Medicine Prescriptions List
   const [prescribedMeds, setPrescribedMeds] = useState<PrescribedMedicineItem[]>([]);
@@ -130,13 +129,26 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       return;
     }
 
-    const isInfant = condition === 'Infant Milk' || med.category === 'Infant Milk' || med.packagingType === 'tin';
+    // Dynamic category detection with Blood Pressure (BP) fallback
+    const detectedCat = (med.category && med.category !== 'General' && med.category !== 'Uncategorized')
+      ? med.category
+      : detectMedicineCategory(med.name, med.genericName, (med as any).saltComposition);
+
+    const finalItemCategory = detectedCat || DEFAULT_CHRONIC_CATEGORY;
+
+    // Dynamically learn / sync patient condition if user hasn't manually locked it
+    if (!conditionManuallySelected && finalItemCategory) {
+      setCondition(finalItemCategory);
+    }
+
+    const isInfant = finalItemCategory === 'Infant Milk' || med.category === 'Infant Milk' || med.packagingType === 'tin';
     const packUnits = med.unitsPerPack > 0 ? med.unitsPerPack : 10;
 
     let newItem: PrescribedMedicineItem;
     if (isInfant) {
       newItem = {
         medicine: med,
+        category: finalItemCategory,
         unitMode: 'tins',
         stripCount: 1,
         totalQty: packUnits || 400,
@@ -149,6 +161,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       const defaultStrips = 2; // e.g. 2 strips default
       newItem = {
         medicine: med,
+        category: finalItemCategory,
         unitMode: 'strips',
         stripCount: defaultStrips,
         totalQty: defaultStrips * packUnits,
@@ -231,11 +244,6 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       return;
     }
 
-    if (prescribedMeds.length === 0) {
-      setErrorMsg('Please search and add at least one medicine for the patient');
-      return;
-    }
-
     setSaving(true);
     try {
       const villageAddress = `गाँव: ${village.trim()}${landmark.trim() ? ', ' + landmark.trim() : ''}`;
@@ -249,6 +257,8 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         return true;
       });
 
+      const effectiveCondition = condition || DEFAULT_CHRONIC_CATEGORY;
+
       const payload = {
         name: name.trim(),
         phone: cleanPhone,
@@ -256,7 +266,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         address: villageAddress,
         locality: village.trim(),
         city: 'Muzaffarpur',
-        primaryCondition: condition,
+        primaryCondition: effectiveCondition,
         medicines: dedupedMeds.map((item) => {
           const packUnits = (item.customUnitsPerPack && item.customUnitsPerPack > 0)
             ? item.customUnitsPerPack
@@ -272,6 +282,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
 
           return {
             medicineId: item.medicine.id,
+            category: item.category || effectiveCondition,
             dailyDosage: Number(item.dailyDosage) || 1,
             lastPurchaseQty: Number(item.totalQty) || 30,
             lastPurchaseDate: new Date().toISOString(),
@@ -293,7 +304,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         address: villageAddress,
         locality: village.trim(),
         city: 'Muzaffarpur',
-        primaryCondition: condition,
+        primaryCondition: effectiveCondition,
         whatsappEnabled: true,
         createdAt: new Date().toISOString(),
         prescriptions: dedupedMeds.map((item, pIdx) => {
@@ -307,6 +318,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             customPackaging: `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`,
             medicine: {
               ...item.medicine,
+              category: item.category || effectiveCondition,
               mrp: item.customMrp || item.medicine.mrp,
               unitsPerPack: packUnits,
             },
@@ -344,7 +356,11 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         console.warn('Server sync will auto-retry on reload:', netErr);
       }
 
-      setSuccessMsg(`Patient ${name} onboarded with ${prescribedMeds.length} medicine(s) successfully!`);
+      setSuccessMsg(
+        dedupedMeds.length > 0
+          ? `Patient ${name} onboarded with ${dedupedMeds.length} medicine(s) successfully!`
+          : `Patient ${name} registered successfully!`
+      );
       setTimeout(() => {
         onSuccess?.();
         onClose();
@@ -502,34 +518,74 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             </div>
           </div>
 
-          {/* Step 2: Chronic Condition */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-              2. Select Chronic Condition / Category
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {CONDITIONS.map((c) => (
+          {/* Chronic Condition Selection (Optional • Auto-detects • BP Default) */}
+          <div className="space-y-2 bg-gradient-to-r from-teal-50/40 via-blue-50/30 to-purple-50/20 p-3.5 rounded-2xl border border-teal-100/80">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                <label className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                  Chronic Condition Category
+                </label>
+                <span className="text-[10px] font-semibold text-teal-700 bg-white px-2 py-0.5 rounded-md border border-teal-200">
+                  Optional • Auto-detects • Defaults to BP
+                </span>
+              </div>
+              {condition !== DEFAULT_CHRONIC_CATEGORY && (
                 <button
-                  key={c.id}
                   type="button"
-                  onClick={() => setCondition(c.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    condition === c.id
-                      ? 'bg-teal-700 text-white border-teal-800 shadow-xs scale-102'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
+                  onClick={() => {
+                    setCondition(DEFAULT_CHRONIC_CATEGORY);
+                    setConditionManuallySelected(false);
+                  }}
+                  className="text-[11px] text-teal-700 hover:text-teal-900 font-semibold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-teal-200 hover:bg-teal-50 transition-colors shadow-2xs"
+                  title="Reset category back to default Blood Pressure"
                 >
-                  {c.label}
+                  <RotateCcw size={12} /> Reset to BP (Default)
                 </button>
-              ))}
+              )}
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Select or change condition anytime. Clicking active button deselects and returns to <strong className="text-teal-800">Blood Pressure (BP)</strong>.
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {CONDITIONS.map((c) => {
+                const isSelected = condition === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      if (isSelected) {
+                        // Deselecting marks it back as BP (Blood Pressure)
+                        setCondition(DEFAULT_CHRONIC_CATEGORY);
+                        setConditionManuallySelected(false);
+                      } else {
+                        setCondition(c.id);
+                        setConditionManuallySelected(true);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-teal-700 text-white border-teal-800 shadow-xs scale-102 font-bold'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                    title={isSelected ? 'Click to deselect (reverts to BP)' : `Select ${c.label}`}
+                  >
+                    <span>{c.label}</span>
+                    {isSelected && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white inline-block" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Step 3: Prescribed Medicines List */}
+          {/* Customer Medicines Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                3. Customer Medicines ({prescribedMeds.length} added)
+                Customer Medicines ({prescribedMeds.length} added)
               </label>
               <span className="text-[11px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-md">
                 Strips / Packs auto-converted
@@ -607,6 +663,48 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                                 className="w-16 text-center text-xs font-bold text-amber-900 bg-white border border-amber-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-amber-500"
                                 title="Edit medicine MRP"
                               />
+                            </div>
+                          </div>
+
+                          {/* Individual Medicine Category Tag & Deselect Controls */}
+                          <div className="flex items-center gap-1.5 mt-2 pl-7 flex-wrap">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                              Category:
+                            </span>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {CONDITIONS.map((cond) => {
+                                const isSelected = (item.category || DEFAULT_CHRONIC_CATEGORY) === cond.id;
+                                return (
+                                  <button
+                                    key={cond.id}
+                                    type="button"
+                                    onClick={() => {
+                                      // If clicked while selected, deselect and mark as Blood Pressure (BP)
+                                      const nextCat = isSelected ? DEFAULT_CHRONIC_CATEGORY : cond.id;
+                                      handleUpdateMedicine(idx, { category: nextCat });
+                                    }}
+                                    className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer border ${
+                                      isSelected
+                                        ? 'bg-teal-700 text-white border-teal-800 shadow-2xs'
+                                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                                    }`}
+                                    title={isSelected ? 'Click to deselect (marks as BP)' : `Categorize as ${cond.label}`}
+                                  >
+                                    {cond.label}
+                                    {isSelected && ' ✓'}
+                                  </button>
+                                );
+                              })}
+                              {item.category && item.category !== DEFAULT_CHRONIC_CATEGORY && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateMedicine(idx, { category: DEFAULT_CHRONIC_CATEGORY })}
+                                  className="text-[10px] text-amber-700 hover:text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md font-semibold cursor-pointer"
+                                  title="Deselect and reset this medicine to BP"
+                                >
+                                  Deselect (Reset to BP)
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -937,10 +1035,12 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
               className="px-6 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors flex items-center gap-2 cursor-pointer"
             >
               {saving
-                ? 'Onboarding Patient...'
-                : prescribedMeds.length > 1
-                ? `Save Patient & ${prescribedMeds.length} Medicines`
-                : 'Save Patient & Activate Refill'}
+                ? 'Saving Patient...'
+                : prescribedMeds.length === 0
+                ? 'Save Patient Profile'
+                : prescribedMeds.length === 1
+                ? 'Save Patient & 1 Medicine'
+                : `Save Patient & ${prescribedMeds.length} Medicines`}
             </button>
           </div>
         </form>
