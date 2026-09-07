@@ -51,6 +51,7 @@ export default function QuickQrPage() {
               body: JSON.stringify({
                 upiId: localId,
                 upiPayeeName: localPayee || 'Manoj Medical Hall',
+                upiCustomized: 'true',
               }),
             }).catch(() => {});
           }

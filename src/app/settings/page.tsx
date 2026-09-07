@@ -7,9 +7,9 @@ import * as XLSX from 'xlsx';
 import {
   Settings, Database, MessageSquare, Truck, Bell, Save, CheckCircle2,
   ShieldCheck, RefreshCw, Loader2, Sparkles, RotateCcw, Copy, Check, Info,
-  Smartphone, Eye, Layers, IndianRupee, QrCode, AlertTriangle, KeyRound,
-  User, Mail, Phone, Lock, ExternalLink, Send, Upload, UploadCloud,
-  FileText, History, Box, CheckCircle, Pill
+  Smartphone, Eye, EyeOff, Layers, IndianRupee, QrCode, AlertTriangle, KeyRound,
+  User, Mail, Phone, Lock, Unlock, ExternalLink, Send, Upload, UploadCloud,
+  FileText, History, Box, CheckCircle, Pill, X
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -48,8 +48,8 @@ export default function SettingsPage() {
   // 2. Pharmacy Profile States
   const [pharmacyInfo, setPharmacyInfo] = useState({
     name: 'Manoj Medical Hall',
-    dlNumber: 'BR-20B/MUZ/2022',
-    gstin: '10AAAAA0000A1Z5',
+    dlNumber: '',
+    gstin: '',
     phone: '+91 98765 43210',
     address: 'Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118',
     deliveryRadius: '10-20 KM',
@@ -92,13 +92,30 @@ export default function SettingsPage() {
   const [importedStats, setImportedStats] = useState<any>(null);
   const [importErrorMsg, setImportErrorMsg] = useState('');
 
-  // 5. UPI Payment States
+  // 5. UPI Payment States & Security Passcode Lock
   const [upiId, setUpiId] = useState('manojmedical@okhdfcbank');
   const [upiPayeeName, setUpiPayeeName] = useState('Manoj Medical Hall');
   const [testAmount, setTestAmount] = useState<number>(100);
   const [savingUpi, setSavingUpi] = useState(false);
   const [savedUpi, setSavedUpi] = useState(false);
   const [upiError, setUpiError] = useState('');
+
+  // UPI Security Lock States (Protected by Owner PIN)
+  const [isUpiLocked, setIsUpiLocked] = useState(true);
+  const [upiPasscode, setUpiPasscode] = useState('1234');
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [showPinMask, setShowPinMask] = useState(false);
+
+  // Change PIN States
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [currentPinInput, setCurrentPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [changePinError, setChangePinError] = useState('');
+  const [changePinSuccess, setChangePinSuccess] = useState('');
+  const [savingPin, setSavingPin] = useState(false);
 
   // 5. MARG ERP Gateway States
   const [margConfig, setMargConfig] = useState({
@@ -126,8 +143,10 @@ export default function SettingsPage() {
     try {
       const cachedUpi = localStorage.getItem('manoj_upi_id');
       const cachedPayee = localStorage.getItem('manoj_upi_payee');
+      const cachedPin = localStorage.getItem('manoj_upi_passcode');
       if (cachedUpi) setUpiId(cachedUpi);
       if (cachedPayee) setUpiPayeeName(cachedPayee);
+      if (cachedPin) setUpiPasscode(cachedPin);
 
       const cachedProfile = localStorage.getItem('manoj_pharmacy_profile');
       if (cachedProfile) {
@@ -144,8 +163,8 @@ export default function SettingsPage() {
             setPharmacyInfo((prev) => ({
               ...prev,
               name: data.pharmacyName || prev.name,
-              dlNumber: data.dlNumber || prev.dlNumber,
-              gstin: data.gstin || prev.gstin,
+              dlNumber: data.dlNumber !== undefined ? data.dlNumber : '',
+              gstin: data.gstin !== undefined ? data.gstin : '',
               phone: data.phone || prev.phone,
               address: data.address || prev.address,
               deliveryRadius: data.deliveryRadius || prev.deliveryRadius,
@@ -154,9 +173,34 @@ export default function SettingsPage() {
             if (data.phone) setTestPhone(data.phone.replace(/[^0-9]/g, '').slice(-10));
           }
 
-          if (data.upiId) {
+          const localCustomized = typeof window !== 'undefined' && localStorage.getItem('manoj_upi_customized') === 'true';
+          const localId = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
+          const localPayee = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_payee') : null;
+
+          if (localCustomized && localId && localId.includes('@')) {
+            setUpiId(localId);
+            if (localPayee) setUpiPayeeName(localPayee);
+            if (data.upiId && data.upiId !== localId) {
+              fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  upiId: localId,
+                  upiPayeeName: localPayee || 'Manoj Medical Hall',
+                  upiCustomized: 'true',
+                }),
+              }).catch(() => {});
+            }
+          } else if (data.upiId) {
             setUpiId(data.upiId);
             setUpiPayeeName(data.upiPayeeName || data.pharmacyName || 'Manoj Medical Hall');
+          }
+
+          if (data.upiPasscode) {
+            setUpiPasscode(data.upiPasscode);
+            try {
+              localStorage.setItem('manoj_upi_passcode', data.upiPasscode);
+            } catch {}
           }
 
           if (data.margApiUrl) {
@@ -264,8 +308,86 @@ export default function SettingsPage() {
     }
   };
 
+  // Verify Passcode to Unlock UPI Settings
+  const handleVerifyUnlockPin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setPinError('');
+    if (!pinInput.trim()) {
+      setPinError('Please enter your 4-digit security PIN.');
+      return;
+    }
+    if (pinInput.trim() === upiPasscode) {
+      setIsUpiLocked(false);
+      setShowUnlockModal(false);
+      setPinInput('');
+      setPinError('');
+    } else {
+      setPinError('Incorrect security PIN. Default is 1234 unless changed.');
+    }
+  };
+
+  // Change Passcode
+  const handleChangePin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setChangePinError('');
+    setChangePinSuccess('');
+
+    if (currentPinInput.trim() !== upiPasscode) {
+      setChangePinError('Current security PIN is incorrect.');
+      return;
+    }
+    if (!newPinInput.trim() || newPinInput.trim().length < 4) {
+      setChangePinError('New PIN must be at least 4 digits.');
+      return;
+    }
+    if (newPinInput.trim() !== confirmPinInput.trim()) {
+      setChangePinError('New PIN and Confirm PIN do not match.');
+      return;
+    }
+
+    setSavingPin(true);
+    const updatedPin = newPinInput.trim();
+
+    try {
+      localStorage.setItem('manoj_upi_passcode', updatedPin);
+    } catch {}
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upiPasscode: updatedPin }),
+      });
+      if (res.ok) {
+        setUpiPasscode(updatedPin);
+        setChangePinSuccess('Security PIN successfully updated!');
+        setTimeout(() => {
+          setShowChangePinModal(false);
+          setCurrentPinInput('');
+          setNewPinInput('');
+          setConfirmPinInput('');
+          setChangePinSuccess('');
+        }, 1500);
+      } else {
+        setChangePinError('Failed to update PIN on server.');
+      }
+    } catch {
+      setUpiPasscode(updatedPin);
+      setChangePinSuccess('Security PIN updated in browser storage!');
+      setTimeout(() => {
+        setShowChangePinModal(false);
+        setCurrentPinInput('');
+        setNewPinInput('');
+        setConfirmPinInput('');
+        setChangePinSuccess('');
+      }, 1500);
+    } finally {
+      setSavingPin(false);
+    }
+  };
+
   // Dedicated UPI Saver
-  const handleSaveUpi = async () => {
+  const handleSaveUpi = async (reLock = false) => {
     const cleanId = upiId.trim();
     const cleanPayee = upiPayeeName.trim() || pharmacyInfo.name || 'Manoj Medical Hall';
 
@@ -280,6 +402,7 @@ export default function SettingsPage() {
     try {
       localStorage.setItem('manoj_upi_id', cleanId);
       localStorage.setItem('manoj_upi_payee', cleanPayee);
+      localStorage.setItem('manoj_upi_customized', 'true');
     } catch {}
 
     try {
@@ -289,10 +412,12 @@ export default function SettingsPage() {
         body: JSON.stringify({
           upiId: cleanId,
           upiPayeeName: cleanPayee,
+          upiCustomized: 'true',
         }),
       });
       if (res.ok) {
         setSavedUpi(true);
+        if (reLock) setIsUpiLocked(true);
         setTimeout(() => setSavedUpi(false), 4000);
       } else {
         setUpiError('Failed saving to server database.');
@@ -300,6 +425,7 @@ export default function SettingsPage() {
     } catch (err) {
       // Local storage saved it
       setSavedUpi(true);
+      if (reLock) setIsUpiLocked(true);
       setTimeout(() => setSavedUpi(false), 4000);
     } finally {
       setSavingUpi(false);
@@ -313,8 +439,13 @@ export default function SettingsPage() {
 
     try {
       localStorage.setItem('manoj_pharmacy_profile', JSON.stringify(pharmacyInfo));
-      localStorage.setItem('manoj_upi_id', upiId.trim());
-      localStorage.setItem('manoj_upi_payee', upiPayeeName.trim());
+      if (upiId.trim()) {
+        localStorage.setItem('manoj_upi_id', upiId.trim());
+        localStorage.setItem('manoj_upi_payee', upiPayeeName.trim());
+        if (upiId.trim() !== 'manojmedical@okhdfcbank') {
+          localStorage.setItem('manoj_upi_customized', 'true');
+        }
+      }
     } catch {}
 
     try {
@@ -346,6 +477,8 @@ export default function SettingsPage() {
         englishOutForDeliveryTemplate: templates.englishOutForDeliveryTemplate,
         upiId: upiId.trim(),
         upiPayeeName: upiPayeeName.trim() || pharmacyInfo.name,
+        upiCustomized: upiId.trim() !== 'manojmedical@okhdfcbank' ? 'true' : 'false',
+        upiPasscode: upiPasscode,
       };
 
       const res = await fetch('/api/settings', {
@@ -1367,20 +1500,126 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Security Lock Header / Banner */}
+              {isUpiLocked ? (
+                <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-amber-950">Payment Settings Protected by Security PIN</h3>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Locked
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800/80 mt-0.5">
+                        UPI ID and recipient payee name are locked so counter operators and staff cannot tamper with payments.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPinInput('');
+                      setPinError('');
+                      setShowUnlockModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>Unlock UPI Settings</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
+                      <Unlock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-emerald-950">Admin Edit Mode Active</h3>
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 flex items-center gap-1">
+                          <Check className="w-2.5 h-2.5" /> Unlocked
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-800/80 mt-0.5">
+                        You have owner permission to update UPI ID and Payee name. Remember to lock or &quot;Save &amp; Re-lock&quot; after changes.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentPinInput('');
+                        setNewPinInput('');
+                        setConfirmPinInput('');
+                        setChangePinError('');
+                        setChangePinSuccess('');
+                        setShowChangePinModal(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer"
+                    >
+                      <KeyRound className="w-3.5 h-3.5 text-gray-500" />
+                      <span>Change Security PIN</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsUpiLocked(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 hover:bg-gray-800 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Lock Now</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* Left: Input Fields */}
                 <div className="lg:col-span-7 space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Store UPI ID (VPA) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value.trim())}
-                      placeholder="e.g. manojmedical@okhdfcbank, 9876543210@ybl, shop@paytm"
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Store UPI ID (VPA) <span className="text-red-500">*</span>
+                      </label>
+                      {isUpiLocked && (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Locked
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={upiId}
+                        disabled={isUpiLocked}
+                        onChange={(e) => setUpiId(e.target.value.trim())}
+                        placeholder="e.g. manojmedical@okhdfcbank, 9876543210@ybl, shop@paytm"
+                        className={`w-full px-3.5 py-2.5 text-sm border rounded-xl outline-none font-mono transition-colors ${
+                          isUpiLocked
+                            ? 'bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed select-none'
+                            : 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500'
+                        }`}
+                      />
+                      {isUpiLocked && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPinInput('');
+                            setPinError('');
+                            setShowUnlockModal(true);
+                          }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-200 shadow-2xs cursor-pointer"
+                        >
+                          <KeyRound className="w-3 h-3" />
+                          <span>Unlock</span>
+                        </button>
+                      )}
+                    </div>
                     {upiId && !upiId.includes('@') && (
                       <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" />
@@ -1388,20 +1627,34 @@ export default function SettingsPage() {
                       </p>
                     )}
                     <p className="text-[11px] text-gray-400 mt-1">
-                      Direct bank settlement via NPCI UPI protocol. No middleman transaction fees.
+                      {isUpiLocked
+                        ? 'Protected by store owner security lock. Counter staff cannot alter payment accounts.'
+                        : 'Direct bank settlement via NPCI UPI protocol. No middleman transaction fees.'}
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Payee Display Name (shown to customer)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Payee Display Name (shown to customer)
+                      </label>
+                      {isUpiLocked && (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Locked
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={upiPayeeName}
+                      disabled={isUpiLocked}
                       onChange={(e) => setUpiPayeeName(e.target.value)}
                       placeholder="e.g. Manoj Medical Hall"
-                      className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                      className={`w-full px-3.5 py-2 text-sm border rounded-xl outline-none transition-colors ${
+                        isUpiLocked
+                          ? 'bg-gray-50 border-gray-200 text-gray-600 cursor-not-allowed select-none'
+                          : 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500'
+                      }`}
                     />
                     <p className="text-[11px] text-gray-400 mt-1">
                       Displayed on the customer&apos;s phone screen inside PhonePe, Google Pay, or Paytm.
@@ -1432,33 +1685,60 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={handleSaveUpi}
-                      disabled={savingUpi}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors cursor-pointer"
-                    >
-                      {savingUpi ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Saving UPI ID...</span>
-                        </>
-                      ) : savedUpi ? (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 text-white" />
-                          <span>UPI ID Saved &amp; Active!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4" />
-                          <span>Save UPI Settings</span>
-                        </>
-                      )}
-                    </button>
+                    {isUpiLocked ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPinInput('');
+                          setPinError('');
+                          setShowUnlockModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-100 hover:bg-gray-200/80 text-gray-700 font-bold text-xs sm:text-sm rounded-xl border border-gray-200 transition-colors cursor-pointer"
+                      >
+                        <Lock className="w-4 h-4 text-amber-600" />
+                        <span>Unlock with PIN to Edit UPI</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveUpi(false)}
+                          disabled={savingUpi}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors cursor-pointer"
+                        >
+                          {savingUpi ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Saving UPI ID...</span>
+                            </>
+                          ) : savedUpi ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 text-white" />
+                              <span>UPI ID Saved &amp; Active!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4" />
+                              <span>Save UPI Settings</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveUpi(true)}
+                          disabled={savingUpi}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-colors cursor-pointer"
+                          title="Save UPI changes and immediately lock settings"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Save &amp; Re-lock</span>
+                        </button>
+                      </div>
+                    )}
 
                     {savedUpi && (
                       <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" /> Saved to browser &amp; server!
+                        <Check className="w-3.5 h-3.5" /> Saved &amp; active across all bills!
                       </span>
                     )}
                     {upiError && (
@@ -1510,6 +1790,194 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+
+            {/* UNLOCK PIN MODAL */}
+            {showUnlockModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+                <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                        <Lock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 font-heading">Security Passcode Required</h3>
+                        <p className="text-[11px] text-gray-500">Enter PIN to edit store UPI settings</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUnlockModal(false);
+                        setPinInput('');
+                        setPinError('');
+                      }}
+                      className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleVerifyUnlockPin} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Admin Security PIN
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPinMask ? 'text' : 'password'}
+                          value={pinInput}
+                          onChange={(e) => setPinInput(e.target.value)}
+                          maxLength={8}
+                          placeholder="Enter 4-digit PIN"
+                          autoFocus
+                          className="w-full px-3.5 py-2.5 text-center tracking-widest text-lg font-mono font-bold border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPinMask(!showPinMask)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                        >
+                          {showPinMask ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      {pinError && (
+                        <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          {pinError}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-gray-400 mt-1 text-center">
+                        Default store PIN: <span className="font-mono font-bold text-gray-600">1234</span> (can be changed once unlocked)
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUnlockModal(false);
+                          setPinInput('');
+                          setPinError('');
+                        }}
+                        className="flex-1 py-2 px-3 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2 px-4 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        <span>Verify &amp; Unlock</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* CHANGE PIN MODAL */}
+            {showChangePinModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+                <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-800 flex items-center justify-center shrink-0">
+                        <KeyRound className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 font-heading">Change Security PIN</h3>
+                        <p className="text-[11px] text-gray-500">Protect your UPI ID with a new passcode</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowChangePinModal(false)}
+                      className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleChangePin} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Current PIN
+                      </label>
+                      <input
+                        type="password"
+                        value={currentPinInput}
+                        onChange={(e) => setCurrentPinInput(e.target.value)}
+                        maxLength={8}
+                        placeholder="Current PIN (default 1234)"
+                        className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        New PIN (4 to 8 digits)
+                      </label>
+                      <input
+                        type="password"
+                        value={newPinInput}
+                        onChange={(e) => setNewPinInput(e.target.value)}
+                        maxLength={8}
+                        placeholder="e.g. 5678"
+                        className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Confirm New PIN
+                      </label>
+                      <input
+                        type="password"
+                        value={confirmPinInput}
+                        onChange={(e) => setConfirmPinInput(e.target.value)}
+                        maxLength={8}
+                        placeholder="Repeat new PIN"
+                        className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {changePinError && (
+                      <p className="text-xs text-red-600 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        {changePinError}
+                      </p>
+                    )}
+
+                    {changePinSuccess && (
+                      <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        {changePinSuccess}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowChangePinModal(false)}
+                        className="flex-1 py-2 px-3 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingPin}
+                        className="flex-1 py-2 px-4 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        {savingPin ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        <span>Save New PIN</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

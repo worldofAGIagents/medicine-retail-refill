@@ -19,8 +19,8 @@ export async function GET(request: Request) {
     // Default fallback values if empty
     const defaults = {
       pharmacyName: settings.pharmacyName || 'Manoj Medical Hall',
-      dlNumber: settings.dlNumber || 'BR-20B/MUZ/2022',
-      gstin: settings.gstin || '10AAAAA0000A1Z5',
+      dlNumber: settings.dlNumber !== undefined ? settings.dlNumber : '',
+      gstin: settings.gstin !== undefined ? settings.gstin : '',
       phone: settings.phone || '+91 98765 43210',
       address: settings.address || 'Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118',
       city: settings.city || 'Muzaffarpur',
@@ -46,8 +46,10 @@ export async function GET(request: Request) {
       englishOverdueTemplate: settings.englishOverdueTemplate || DEFAULT_TEMPLATES.englishOverdueTemplate,
       outForDeliveryTemplate: settings.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate,
       englishOutForDeliveryTemplate: settings.englishOutForDeliveryTemplate || DEFAULT_TEMPLATES.englishOutForDeliveryTemplate,
-      upiId: process.env.SHOP_UPI_ID || settings.upiId || 'manojmedical@okhdfcbank',
-      upiPayeeName: process.env.SHOP_UPI_PAYEE || settings.upiPayeeName || settings.pharmacyName || 'Manoj Medical Hall',
+      upiId: settings.upiId || process.env.SHOP_UPI_ID || 'manojmedical@okhdfcbank',
+      upiPayeeName: settings.upiPayeeName || process.env.SHOP_UPI_PAYEE || settings.pharmacyName || 'Manoj Medical Hall',
+      upiCustomized: settings.upiCustomized || (settings.upiId && settings.upiId !== 'manojmedical@okhdfcbank' ? 'true' : 'false'),
+      upiPasscode: settings.upiPasscode || '1234',
     };
 
     return NextResponse.json(defaults);
