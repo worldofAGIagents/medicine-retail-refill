@@ -97,7 +97,66 @@ export default function PrescriptionsPage() {
     fetch('/api/prescriptions')
       .then((res) => res.json())
       .then((data) => {
-        setPrescriptions(Array.isArray(data) ? data : []);
+        let list: PrescriptionItem[] = Array.isArray(data) ? data : [];
+        if (list.length === 0) {
+          try {
+            const raw = localStorage.getItem('manoj_local_customers');
+            if (raw) {
+              const localList = JSON.parse(raw);
+              if (Array.isArray(localList) && localList.length > 0) {
+                const clientList: PrescriptionItem[] = [];
+                localList.forEach((cust: any) => {
+                  (cust.prescriptions || []).forEach((p: any, idx: number) => {
+                    clientList.push({
+                      id: p.id || `local-rx-${cust.id}-${idx}`,
+                      customerId: cust.id,
+                      medicineId: p.medicine?.id || `med-${idx}`,
+                      dailyDosage: Number(p.dailyDosage) || 1,
+                      dosageSchedule: p.dosageSchedule || null,
+                      doctorName: p.doctorName || null,
+                      lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
+                      lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
+                      nextRefillDate: p.nextRefillDate || new Date().toISOString(),
+                      bufferDays: Number(p.bufferDays) || 3,
+                      customPackaging: p.customPackaging,
+                      unitType: p.unitType || 'tablets',
+                      isActive: true,
+                      customer: {
+                        id: cust.id,
+                        name: cust.name,
+                        phone: cust.phone,
+                        address: cust.address,
+                        city: cust.city,
+                      },
+                      medicine: {
+                        id: p.medicine?.id || `med-${idx}`,
+                        name: p.medicine?.name || 'Medicine',
+                        genericName: p.medicine?.genericName || '',
+                        category: p.medicine?.category || 'Chronic',
+                        packagingType: p.medicine?.packagingType || 'strip',
+                        unitsPerPack: p.medicine?.unitsPerPack || 10,
+                        packsPerBox: p.medicine?.packsPerBox || 1,
+                        mrp: p.medicine?.mrp || 0,
+                      },
+                    });
+                  });
+                });
+                list = clientList;
+              }
+            }
+          } catch (e) {}
+        }
+
+        // Deduplicate by customer + medicine
+        const seen = new Set<string>();
+        const cleanList = list.filter((item) => {
+          const key = `${item.customer?.phone || item.customer?.name}::${item.medicine?.name}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        setPrescriptions(cleanList);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -122,7 +181,19 @@ export default function PrescriptionsPage() {
 
     fetch('/api/customers')
       .then((res) => res.json())
-      .then((data) => setCustomers(Array.isArray(data) ? data : []))
+      .then((data) => {
+        let custList = Array.isArray(data) ? data : [];
+        if (custList.length === 0) {
+          try {
+            const raw = localStorage.getItem('manoj_local_customers');
+            if (raw) {
+              const localList = JSON.parse(raw);
+              if (Array.isArray(localList)) custList = localList;
+            }
+          } catch (e) {}
+        }
+        setCustomers(custList);
+      })
       .catch(console.error);
 
     fetchMedicinesForDropdown('', 'All');

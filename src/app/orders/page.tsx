@@ -57,10 +57,33 @@ export default function OrdersPage() {
     fetch('/api/orders')
       .then((res) => res.json())
       .then((data) => {
-        setOrders(Array.isArray(data) ? data : []);
+        let list = Array.isArray(data) ? data : [];
+        if (list.length === 0) {
+          try {
+            const raw = localStorage.getItem('manoj_local_orders');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+            }
+          } catch (e) {}
+        } else {
+          try {
+            localStorage.setItem('manoj_local_orders', JSON.stringify(list));
+          } catch (e) {}
+        }
+        setOrders(list);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem('manoj_local_orders');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) setOrders(parsed);
+          }
+        } catch (e) {}
+        setLoading(false);
+      });
 
     fetch('/api/settings')
       .then((res) => res.json())

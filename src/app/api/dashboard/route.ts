@@ -5,13 +5,22 @@ import { calculateRefill } from '@/lib/refill-engine';
 export async function GET() {
   try {
     const totalCustomers = await db.customer.count();
-    const activePrescriptionsCount = await db.prescription.count({ where: { isActive: true } });
     const pendingDeliveries = await db.order.count({ where: { status: { in: ['preparing', 'ready', 'out_for_delivery'] } } });
 
-    // Calculate upcoming refills
-    const prescriptions = await db.prescription.findMany({
+    // Calculate upcoming refills with deduplication
+    const rawPrescriptions = await db.prescription.findMany({
       where: { isActive: true, lastPurchaseDate: { not: null }, lastPurchaseQty: { not: null } }
     });
+
+    const seenPresc = new Set<string>();
+    const prescriptions = rawPrescriptions.filter(p => {
+      const key = `${p.customerId}::${p.medicineId}`;
+      if (seenPresc.has(key)) return false;
+      seenPresc.add(key);
+      return true;
+    });
+
+    const activePrescriptionsCount = prescriptions.length;
 
     let upcomingRefillsCount = 0;
     for (const p of prescriptions) {
