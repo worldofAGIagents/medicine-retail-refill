@@ -142,9 +142,43 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const medicine = await db.medicine.create({ data: body });
+    if (!body || !body.name || !body.name.trim()) {
+      return NextResponse.json({ error: 'Medicine name is required' }, { status: 400 });
+    }
+
+    const name = body.name.trim();
+    const genericName = (body.genericName || name).trim();
+    const category = (body.category || 'Blood Pressure').trim();
+    const mrp = Math.max(0, parseFloat(body.mrp) || 0);
+    const unitsPerPack = Math.max(1, parseInt(body.unitsPerPack, 10) || 10);
+    const packagingType = (body.packagingType || 'strip').trim();
+    const manufacturer = body.manufacturer?.trim() || null;
+    const saltComposition = body.saltComposition?.trim() || (body.genericName?.trim() || null);
+    const isChronicMed = Boolean(body.isChronicMed ?? (category !== 'General' && category !== 'General / OTC'));
+    const currentStock = parseInt(body.currentStock, 10) || 100;
+    const reorderLevel = parseInt(body.reorderLevel, 10) || 20;
+    const margItemCode = body.margItemCode?.trim() || `MAN-${Date.now().toString(36).toUpperCase()}`;
+
+    const medicine = await db.medicine.create({
+      data: {
+        name,
+        genericName,
+        category,
+        packagingType,
+        unitsPerPack,
+        mrp,
+        manufacturer,
+        saltComposition,
+        isChronicMed,
+        currentStock,
+        reorderLevel,
+        margItemCode,
+      },
+    });
+
     return NextResponse.json(medicine, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Error creating medicine' }, { status: 400 });
+  } catch (error: any) {
+    console.error('Error creating medicine:', error);
+    return NextResponse.json({ error: error.message || 'Error creating medicine' }, { status: 400 });
   }
 }

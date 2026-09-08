@@ -49,10 +49,10 @@ export default function DeliverySheetPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'today' | 'tomorrow' | 'dayAfter' | 'overdue'>('all');
   const [pharmacyName, setPharmacyName] = useState('Manoj Medical Hall');
   const [address, setAddress] = useState('Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118');
-  const [dlNumber, setDlNumber] = useState('BR-20B/MUZ/2022');
+  const [dlNumber, setDlNumber] = useState('');
   const [riderName, setRiderName] = useState('Rider #1 (Village Route)');
   const [riderPhone, setRiderPhone] = useState('');
-  const [shopPhone, setShopPhone] = useState('+91 98765 43210');
+  const [shopPhone, setShopPhone] = useState('');
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [copiedRoute, setCopiedRoute] = useState(false);
   const [selectedVillage, setSelectedVillage] = useState<string>('all');
@@ -485,7 +485,7 @@ export default function DeliverySheetPage() {
                   {pharmacyName}
                 </h2>
                 <p className="text-xs text-gray-600 font-medium">
-                  {address} • DL No: <strong>{dlNumber}</strong> • Delivery Coverage: 10–20 KM Village Radius (Muzaffarpur)
+                  {address}{dlNumber ? ` • DL No: ${dlNumber}` : ''} • Delivery Coverage: 10–20 KM Village Radius (Muzaffarpur)
                 </p>
               </div>
               <div className="text-left sm:text-right">

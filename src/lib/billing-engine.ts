@@ -224,7 +224,6 @@ export function generateWhatsAppBillText(
   let msg = `🧾 *${pharmacy.name.toUpperCase()}*\n`;
   msg += `📍 ${pharmacy.address}\n`;
   if (pharmacy.phone) msg += `📞 Ph: ${pharmacy.phone}\n`;
-  if (pharmacy.dlNumber) msg += `📋 DL: ${pharmacy.dlNumber}\n`;
   msg += `--------------------------------\n`;
   msg += `*Invoice No:* ${bill.invoiceNo}\n`;
   msg += `*Date:* ${bill.date}\n`;

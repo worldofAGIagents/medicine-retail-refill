@@ -54,13 +54,21 @@ export default function BillingPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Custom OTC Item modal/inline state
+  // Custom / New Product modal & inline state
   const [showCustomItem, setShowCustomItem] = useState(false);
   const [customName, setCustomName] = useState('');
+  const [customGeneric, setCustomGeneric] = useState('');
+  const [customCategory, setCustomCategory] = useState('Blood Pressure');
+  const [customPackaging, setCustomPackaging] = useState('strip');
+  const [customUnitsPerPack, setCustomUnitsPerPack] = useState(10);
+  const [customManufacturer, setCustomManufacturer] = useState('');
   const [customQty, setCustomQty] = useState(1);
   const [customMrp, setCustomMrp] = useState('');
   const [customDisc, setCustomDisc] = useState(10);
   const [customIsInfant, setCustomIsInfant] = useState(false);
+  const [customSaveToCatalog, setCustomSaveToCatalog] = useState(true);
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [productSuccessAlert, setProductSuccessAlert] = useState('');
 
   // Customer state
   const [isWalkIn, setIsWalkIn] = useState(true);
@@ -77,13 +85,13 @@ export default function BillingPage() {
   const [paymentMode, setPaymentMode] = useState<'cash' | 'upi' | 'credit'>('cash');
   const [cashTendered, setCashTendered] = useState<string>('');
 
-  // Pharmacy Profile Settings
+  // Pharmacy Profile Settings (GST and DL are omitted from bills as per requirement)
   const [pharmacy, setPharmacy] = useState<PharmacyDetails>({
     name: 'Manoj Medical Hall',
     address: 'Sarfuddinpur, Muzaffarpur, Bihar (843118)',
     phone: '9431422744',
-    dlNumber: 'BR-20B/MUZ/2022',
-    gstin: '10AAAAA0000A1Z5',
+    dlNumber: '',
+    gstin: '',
     upiId: 'manojmedical@okhdfcbank',
     upiPayeeName: 'Manoj Medical Hall',
   });
@@ -208,30 +216,77 @@ export default function BillingPage() {
     setDropdownOpen(false);
   };
 
-  // Add custom item
-  const handleAddCustomItem = (e: React.FormEvent) => {
+  // Add custom item or permanently save new product to catalog
+  const handleAddCustomItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customName.trim() || !customMrp) return;
 
     const mrpVal = parseFloat(customMrp);
     if (isNaN(mrpVal) || mrpVal <= 0) return;
 
-    const isInfant = customIsInfant || isInfantFormula(customName);
+    const isInfant = customIsInfant || customCategory === 'Infant Milk' || isInfantFormula(customName);
     const discVal = isInfant ? 0 : (customDisc >= 0 ? customDisc : 10);
+    const finalCategory = isInfant ? 'Infant Milk' : (customCategory || 'Blood Pressure');
+
+    let createdMedId: string | undefined = undefined;
+
+    if (customSaveToCatalog) {
+      setSavingProduct(true);
+      try {
+        const res = await fetch('/api/medicines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: customName.trim(),
+            genericName: customGeneric.trim() || customName.trim(),
+            category: finalCategory,
+            packagingType: customPackaging || (isInfant ? 'tin' : 'strip'),
+            unitsPerPack: Number(customUnitsPerPack) || (isInfant ? 1 : 10),
+            mrp: mrpVal,
+            manufacturer: customManufacturer.trim() || undefined,
+            isChronicMed: finalCategory !== 'General / OTC',
+          }),
+        });
+
+        if (res.ok) {
+          const newMed = await res.json();
+          createdMedId = newMed.id;
+          setMedicines((prev) => [newMed, ...prev]);
+          setProductSuccessAlert(`✓ "${newMed.name}" added to bill and saved to catalog!`);
+          setTimeout(() => setProductSuccessAlert(''), 4000);
+        }
+      } catch (err) {
+        console.error('Failed to save to catalog:', err);
+      } finally {
+        setSavingProduct(false);
+      }
+    }
 
     const newItem: BillItemInput = {
+      medicineId: createdMedId,
       name: customName.trim(),
-      category: isInfant ? 'Infant Milk' : 'General OTC',
-      packaging: 'Pack',
+      genericName: customGeneric.trim() || undefined,
+      category: finalCategory,
+      packaging: `${customPackaging || 'strip'} (${customUnitsPerPack || 10}s)`,
+      unitsPerPack: Number(customUnitsPerPack) || 10,
       mrp: mrpVal,
       quantity: Math.max(1, customQty),
       discountPercent: discVal,
     };
 
-    setItems((prev) => [...prev, newItem]);
+    setItems((prev) => [newItem, ...prev]);
+
+    // Reset form
     setCustomName('');
+    setCustomGeneric('');
     setCustomMrp('');
     setCustomQty(1);
+    setCustomCategory('Blood Pressure');
+    setCustomPackaging('strip');
+    setCustomUnitsPerPack(10);
+    setCustomManufacturer('');
+    setCustomDisc(10);
+    setCustomIsInfant(false);
     setShowCustomItem(false);
   };
 
@@ -447,9 +502,9 @@ export default function BillingPage() {
                 <button
                   type="button"
                   onClick={() => setShowCustomItem(!showCustomItem)}
-                  className="text-[11px] text-teal-700 hover:text-teal-900 font-semibold flex items-center gap-1 cursor-pointer"
+                  className="text-[11px] text-teal-800 hover:text-teal-950 font-bold bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                 >
-                  <Plus size={12} /> {showCustomItem ? 'Hide Custom Entry' : '+ Custom / OTC Item'}
+                  <Plus size={13} /> {showCustomItem ? 'Hide Entry Form' : '+ Add New Product / Item'}
                 </button>
               </div>
 
@@ -535,39 +590,159 @@ export default function BillingPage() {
                 )}
               </div>
 
-              {/* Custom OTC Item Inline Form */}
+              {/* Product Creation Success Alert */}
+              {productSuccessAlert && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 rounded-xl flex items-center gap-2 text-xs font-semibold animate-fadeIn">
+                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
+                  <span>{productSuccessAlert}</span>
+                </div>
+              )}
+
+              {/* Manually Add New Product / Custom Item Form */}
               {showCustomItem && (
                 <form
                   onSubmit={handleAddCustomItem}
-                  className="bg-teal-50/50 p-3.5 rounded-xl border border-teal-100 space-y-3 animate-fadeIn"
+                  className="bg-teal-50/70 p-4 rounded-xl border border-teal-200 space-y-3.5 animate-fadeIn"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-teal-900 uppercase">Quick Add OTC / Custom Item</span>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-teal-200/60 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-teal-950 uppercase tracking-wider flex items-center gap-1">
+                        <Sparkles size={14} className="text-teal-600" />
+                        Add New Medicine / Product
+                      </span>
+                      <span className="text-[10px] bg-teal-100 text-teal-800 font-semibold px-2 py-0.5 rounded">
+                        BP Category Default
+                      </span>
+                    </div>
                     <label className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={customIsInfant}
                         onChange={(e) => {
-                          setCustomIsInfant(e.target.checked);
-                          if (e.target.checked) setCustomDisc(0);
+                          const checked = e.target.checked;
+                          setCustomIsInfant(checked);
+                          if (checked) {
+                            setCustomCategory('Infant Milk');
+                            setCustomPackaging('tin');
+                            setCustomUnitsPerPack(1);
+                            setCustomDisc(0);
+                          } else {
+                            setCustomCategory('Blood Pressure');
+                            setCustomPackaging('strip');
+                            setCustomUnitsPerPack(10);
+                            setCustomDisc(10);
+                          }
                         }}
                         className="rounded text-teal-600 focus:ring-teal-500"
                       />
-                      <span className="text-[11px] font-medium">Is Infant Formula (0% discount)?</span>
+                      <span className="text-[11px] font-semibold text-pink-900">
+                        Is Infant Milk Formula (0% discount, tin pack)
+                      </span>
                     </label>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                    <div className="sm:col-span-2">
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs">
+                    {/* Product Name */}
+                    <div className="sm:col-span-6">
+                      <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                        Brand / Medicine Name <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
                         required
-                        placeholder="Item Name (e.g. Bandage, Syringe, Cotton)..."
+                        placeholder="e.g. Telma 40, Glycomet 500, Pan-D, Nan Pro 1..."
                         value={customName}
                         onChange={(e) => setCustomName(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg outline-none"
+                        className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-teal-500 font-medium"
                       />
                     </div>
-                    <div>
+
+                    {/* Generic / Salt Composition */}
+                    <div className="sm:col-span-6">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Generic Name / Composition
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Telmisartan 40mg, Pantoprazole 40mg + Domperidone 30mg"
+                        value={customGeneric}
+                        onChange={(e) => setCustomGeneric(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </div>
+
+                    {/* Category Dropdown (Defaults to Blood Pressure) */}
+                    <div className="sm:col-span-4">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Chronic Category
+                      </label>
+                      <select
+                        value={customCategory}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomCategory(val);
+                          if (val === 'Infant Milk') {
+                            setCustomIsInfant(true);
+                            setCustomPackaging('tin');
+                            setCustomUnitsPerPack(1);
+                            setCustomDisc(0);
+                          } else {
+                            if (customIsInfant) {
+                              setCustomIsInfant(false);
+                              setCustomPackaging('strip');
+                              setCustomUnitsPerPack(10);
+                              setCustomDisc(10);
+                            }
+                          }
+                        }}
+                        className="w-full px-2.5 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-teal-500 font-semibold text-gray-800"
+                      >
+                        <option value="Blood Pressure">Blood Pressure (BP - Default)</option>
+                        <option value="Diabetes">Diabetes</option>
+                        <option value="Thyroid">Thyroid</option>
+                        <option value="Cholesterol">Cholesterol / Heart</option>
+                        <option value="Infant Milk">Infant Milk (0% Disc)</option>
+                        <option value="General / OTC">General / OTC</option>
+                      </select>
+                    </div>
+
+                    {/* Packaging Type */}
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Packaging
+                      </label>
+                      <select
+                        value={customPackaging}
+                        onChange={(e) => setCustomPackaging(e.target.value)}
+                        className="w-full px-2 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-teal-500"
+                      >
+                        <option value="strip">Strip (Tabs/Caps)</option>
+                        <option value="tin">Tin (Formula)</option>
+                        <option value="bottle">Bottle (Syrup/Drops)</option>
+                        <option value="tube">Tube (Ointment/Gel)</option>
+                        <option value="packet">Packet / Sachet</option>
+                      </select>
+                    </div>
+
+                    {/* Units per Pack */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Units / Pack
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={customUnitsPerPack}
+                        onChange={(e) => setCustomUnitsPerPack(parseInt(e.target.value, 10) || 10)}
+                        className="w-full px-2 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none text-center font-semibold"
+                      />
+                    </div>
+
+                    {/* MRP ₹ */}
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                        MRP ₹ (Per Pack) <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="number"
                         step="0.01"
@@ -576,25 +751,90 @@ export default function BillingPage() {
                         placeholder="MRP ₹"
                         value={customMrp}
                         onChange={(e) => setCustomMrp(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg outline-none font-bold"
+                        className="w-full px-3 py-2 text-xs bg-white border-2 border-amber-400 focus:border-amber-600 rounded-lg outline-none font-extrabold text-gray-900"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    {/* Manufacturer (Optional) */}
+                    <div className="sm:col-span-4">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Manufacturer (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Glenmark, Cipla, Nestle..."
+                        value={customManufacturer}
+                        onChange={(e) => setCustomManufacturer(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none"
+                      />
+                    </div>
+
+                    {/* Bill Quantity */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Bill Qty
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={customQty}
+                        onChange={(e) => setCustomQty(parseInt(e.target.value, 10) || 1)}
+                        className="w-full px-2 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none text-center font-bold"
+                      />
+                    </div>
+
+                    {/* Discount % */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Disc %
+                      </label>
                       <input
                         type="number"
                         min="0"
                         max="100"
-                        placeholder="Disc %"
                         value={customDisc}
-                        disabled={customIsInfant}
+                        disabled={customIsInfant || customCategory === 'Infant Milk'}
                         onChange={(e) => setCustomDisc(parseInt(e.target.value, 10) || 0)}
-                        className="w-16 px-2 py-1.5 text-xs bg-white border border-gray-300 rounded-lg outline-none text-center font-bold"
+                        className="w-full px-2 py-2 text-xs bg-white border border-gray-300 rounded-lg outline-none text-center font-bold"
                       />
+                    </div>
+
+                    {/* Submit Button */}
+                    <div className="sm:col-span-4 flex flex-col justify-end gap-1">
                       <button
                         type="submit"
-                        className="flex-1 py-1.5 bg-teal-700 text-white rounded-lg text-xs font-semibold hover:bg-teal-800 transition-colors cursor-pointer"
+                        disabled={savingProduct}
+                        className="w-full py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50"
                       >
-                        Add
+                        {savingProduct ? (
+                          <>
+                            <RefreshCw size={13} className="animate-spin" /> Saving to Catalog...
+                          </>
+                        ) : (
+                          <>
+                            <Plus size={14} /> Add to Bill
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Checkbox to persist to MARG catalog */}
+                    <div className="sm:col-span-12 pt-1 border-t border-teal-200/60 flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-xs text-teal-950 font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={customSaveToCatalog}
+                          onChange={(e) => setCustomSaveToCatalog(e.target.checked)}
+                          className="rounded text-teal-600 focus:ring-teal-500"
+                        />
+                        <span>Save permanently to Medicine Catalog (MARG Database for future billing)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomItem(false)}
+                        className="text-xs text-gray-500 hover:text-gray-700 font-medium cursor-pointer"
+                      >
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -655,9 +895,24 @@ export default function BillingPage() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5 pl-5">
-                            {item.packaging || 'Standard Pack'} • MRP ₹{item.effectiveRate}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1 pl-5 flex-wrap text-xs text-gray-600">
+                            <span>{item.packaging || 'Standard Pack'}</span>
+                            <span className="text-gray-300">•</span>
+                            <div className="flex items-center gap-1.5 bg-amber-50/90 border border-amber-200 rounded-md px-2 py-0.5" title="Click to edit MRP directly">
+                              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-tight">MRP ₹</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={item.mrp}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  handleUpdateItem(idx, { mrp: isNaN(val) ? 0 : val });
+                                }}
+                                className="w-18 bg-white px-1.5 py-0.5 text-xs font-bold text-gray-900 border border-amber-300 rounded outline-none focus:ring-1 focus:ring-amber-500 text-right"
+                              />
+                            </div>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-3 shrink-0">
@@ -1144,11 +1399,10 @@ export default function BillingPage() {
                     {pharmacy.name}
                   </h2>
                   <p className="text-[11px] text-gray-600">{pharmacy.address}</p>
-                  <p className="text-[10px] text-gray-500">
-                    Ph: {pharmacy.phone} {pharmacy.dlNumber ? `• DL: ${pharmacy.dlNumber}` : ''}
-                  </p>
-                  {pharmacy.gstin && (
-                    <p className="text-[10px] text-gray-500">GSTIN: {pharmacy.gstin}</p>
+                  {pharmacy.phone && (
+                    <p className="text-[10px] text-gray-500">
+                      Ph: {pharmacy.phone}
+                    </p>
                   )}
                 </div>
 

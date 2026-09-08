@@ -50,11 +50,13 @@ export default function SettingsPage() {
     name: 'Manoj Medical Hall',
     dlNumber: '',
     gstin: '',
-    phone: '+91 98765 43210',
+    phone: '',
     address: 'Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118',
     deliveryRadius: '10-20 KM',
     deliveryCoverage: 'Sarfuddinpur, Gopalpur, Bochahan, Gaighat, Ladaura, Musahari & Nearby Villages',
   });
+  const [savingPharmacyProfile, setSavingPharmacyProfile] = useState(false);
+  const [savedPharmacyProfile, setSavedPharmacyProfile] = useState(false);
 
   // 3. WhatsApp & Templates Studio States
   const [activeTemplateKey, setActiveTemplateKey] = useState<TemplateKey>('hindiTemplate');
@@ -150,7 +152,11 @@ export default function SettingsPage() {
 
       const cachedProfile = localStorage.getItem('manoj_pharmacy_profile');
       if (cachedProfile) {
-        setPharmacyInfo(JSON.parse(cachedProfile));
+        try {
+          const parsed = JSON.parse(cachedProfile);
+          if (parsed.phone === '+91 98765 43210') parsed.phone = '';
+          setPharmacyInfo(parsed);
+        } catch {}
       }
     } catch {}
 
@@ -165,7 +171,7 @@ export default function SettingsPage() {
               name: data.pharmacyName || prev.name,
               dlNumber: data.dlNumber !== undefined ? data.dlNumber : '',
               gstin: data.gstin !== undefined ? data.gstin : '',
-              phone: data.phone || prev.phone,
+              phone: data.phone !== undefined ? data.phone : prev.phone,
               address: data.address || prev.address,
               deliveryRadius: data.deliveryRadius || prev.deliveryRadius,
               deliveryCoverage: data.deliveryCoverage || prev.deliveryCoverage,
@@ -305,6 +311,36 @@ export default function SettingsPage() {
       setAdminErrorMsg('Network error while updating admin profile.');
     } finally {
       setSavingAdmin(false);
+    }
+  };
+
+  // Save Pharmacy Retailer Profile
+  const handleSavePharmacyProfile = async () => {
+    setSavingPharmacyProfile(true);
+    setSavedPharmacyProfile(false);
+    try {
+      localStorage.setItem('manoj_pharmacy_profile', JSON.stringify(pharmacyInfo));
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pharmacyName: pharmacyInfo.name,
+          dlNumber: pharmacyInfo.dlNumber,
+          gstin: pharmacyInfo.gstin,
+          phone: pharmacyInfo.phone,
+          address: pharmacyInfo.address,
+          deliveryRadius: pharmacyInfo.deliveryRadius,
+          deliveryCoverage: pharmacyInfo.deliveryCoverage,
+        }),
+      });
+      if (res.ok) {
+        setSavedPharmacyProfile(true);
+        setTimeout(() => setSavedPharmacyProfile(false), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to save pharmacy profile:', err);
+    } finally {
+      setSavingPharmacyProfile(false);
     }
   };
 
@@ -949,6 +985,32 @@ export default function SettingsPage() {
                     onChange={(e) => setPharmacyInfo({ ...pharmacyInfo, address: e.target.value })}
                     className="w-full px-3.5 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                   />
+                </div>
+
+                <div className="md:col-span-2 flex items-center justify-between pt-3 border-t border-gray-100">
+                  <div className="text-xs">
+                    {savedPharmacyProfile && (
+                      <span className="text-teal-700 font-bold flex items-center gap-1.5">
+                        <Check size={16} /> Profile &amp; phone saved successfully!
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSavePharmacyProfile}
+                    disabled={savingPharmacyProfile}
+                    className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {savingPharmacyProfile ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} /> Save Pharmacy Details
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

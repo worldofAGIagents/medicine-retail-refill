@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       pharmacyName: settings.pharmacyName || 'Manoj Medical Hall',
       dlNumber: settings.dlNumber !== undefined ? settings.dlNumber : '',
       gstin: settings.gstin !== undefined ? settings.gstin : '',
-      phone: settings.phone || '+91 98765 43210',
+      phone: settings.phone !== undefined ? settings.phone : '',
       address: settings.address || 'Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118',
       city: settings.city || 'Muzaffarpur',
       state: settings.state || 'Bihar',
