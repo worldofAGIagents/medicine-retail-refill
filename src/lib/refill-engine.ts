@@ -21,31 +21,86 @@ export function isSyrupMedicine(medicine?: {
   customPackaging?: string | null;
 } | null): boolean {
   if (!medicine) return false;
-  const name = (medicine.name || '').toLowerCase();
-  const generic = (medicine.genericName || '').toLowerCase();
-  const category = (medicine.category || '').toLowerCase();
-  const packaging = (medicine.packagingType || '').toLowerCase();
-  const unit = (medicine.unitType || '').toLowerCase();
-  const customPack = (medicine.customPackaging || '').toLowerCase();
+  const name = (medicine.name || '').trim().toLowerCase();
+  const generic = (medicine.genericName || '').trim().toLowerCase();
+  const category = (medicine.category || '').trim().toLowerCase();
+  const packaging = (medicine.packagingType || '').trim().toLowerCase();
+  const unit = (medicine.unitType || '').trim().toLowerCase();
+  const customPack = (medicine.customPackaging || '').trim().toLowerCase();
 
-  // 1. Explicit category
-  if (category === 'syrup' || category === 'drops' || category === 'suspension') return true;
+  // If completely empty object
+  if (!name && !generic && !category && !packaging && !unit && !customPack) {
+    return false;
+  }
 
-  // 2. Clear syrup / liquid / suspension keywords in name or generic or custom packaging
-  const syrupPattern = /\b(syp|syrup|susp|suspension|drops?|elixir|solution|liquid|linctus|tonic|(oral|mouth)\s+(gel|paint)|pediatric\s+drop)\b/i;
-  if (syrupPattern.test(name) || syrupPattern.test(generic) || syrupPattern.test(customPack)) {
+  // 1. Infant Milk Formula is NOT a syrup
+  if (
+    category.includes('milk') ||
+    category.includes('infant') ||
+    name.includes('infant milk') ||
+    generic.includes('infant formula')
+  ) {
+    return false;
+  }
+
+  // 2. Clear syrup / liquid / suspension keywords in name, generic, category, or custom packaging
+  // Covers: liquid syrups, cough formulas, suspensions, drops, elixirs, tonics, pediatric drops, oral gels, solutions
+  const syrupPattern = /\b(syp|syrup|syrups|susp|suspension|suspensions|drops?|elixir|elixirs|solutions?|liquid|liquids|linctus|tonic|tonics|cough\s+formula|(oral|mouth)\s+(gel|paint)s?|pediatric\s+drops?)\b/i;
+
+  const hasSyrupKeyword =
+    syrupPattern.test(name) ||
+    syrupPattern.test(generic) ||
+    syrupPattern.test(category) ||
+    syrupPattern.test(customPack);
+
+  // 3. Tablet / capsule detection:
+  // Bottles of tablets/capsules (e.g. 'ACITROM 4MG TAB 1X30', 'THYRONORM 50MCG TAB 1X120', 'SHELCAL 500 TAB')
+  // must NOT be classified as syrup even if packagingType is bottle or unitType is bottle.
+  const tabletPattern = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i;
+  const isExplicitTablet =
+    !hasSyrupKeyword &&
+    (tabletPattern.test(name) ||
+      tabletPattern.test(generic) ||
+      tabletPattern.test(customPack) ||
+      category === 'tablet' ||
+      category === 'tablets' ||
+      category === 'capsule' ||
+      category === 'capsules' ||
+      unit === 'tab' ||
+      unit === 'tabs' ||
+      unit === 'tablet' ||
+      unit === 'tablets' ||
+      unit === 'cap' ||
+      unit === 'caps');
+
+  if (isExplicitTablet) {
+    return false;
+  }
+
+  // If any syrup keyword was found, it is a syrup
+  if (hasSyrupKeyword) {
     return true;
   }
 
-  // 3. Unit type 'ml' is always liquid syrup
-  if (unit === 'ml' || unit === 'bottle' || unit === 'bottles') {
+  // 4. Explicit categories
+  if (category === 'syrup' || category === 'drops' || category === 'suspension') {
     return true;
   }
 
-  // 4. If packaging is bottle and not marked as a tablet/capsule bottle (e.g. 30 tabs in bottle)
-  if (packaging === 'bottle' || customPack.includes('bottle') || customPack.includes('ml')) {
-    const isExplicitTablet = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i.test(name) && !syrupPattern.test(name);
-    if (!isExplicitTablet) return true;
+  // 5. Unit type 'ml' is always liquid syrup
+  if (unit === 'ml' || customPack.includes('ml')) {
+    return true;
+  }
+
+  // 6. Bottle packaging (if not an explicit tablet/capsule)
+  if (
+    packaging === 'bottle' ||
+    packaging.includes('bottle') ||
+    customPack.includes('bottle') ||
+    unit === 'bottle' ||
+    unit === 'bottles'
+  ) {
+    return true;
   }
 
   return false;
@@ -57,6 +112,7 @@ export function calculateRefill(params: {
   dailyDosage: number;
   bufferDays?: number;
   medicineName?: string;
+  genericName?: string;
   category?: string;
   packagingType?: string;
   unitType?: string;
@@ -69,6 +125,7 @@ export function calculateRefill(params: {
     dailyDosage,
     bufferDays = 3,
     medicineName,
+    genericName,
     category,
     packagingType,
     unitType,
@@ -80,6 +137,7 @@ export function calculateRefill(params: {
     params.isSyrup ??
     isSyrupMedicine({
       name: medicineName,
+      genericName,
       category,
       packagingType,
       unitType,

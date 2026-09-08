@@ -6,6 +6,10 @@ export interface TemplateVariables {
   pharmacy?: string;
   phone?: string;
   address?: string;
+  amount?: string | number;
+  upiLink?: string;
+  upiId?: string;
+  locality?: string;
 }
 
 export type TemplateKey =
@@ -225,8 +229,10 @@ export const TEMPLATE_TAGS = [
   { tag: '{{days}}', label: 'Days Remaining', example: '3 दिन / 3 days' },
   { tag: '{{date}}', label: 'Refill Date', example: '08 Sep' },
   { tag: '{{pharmacy}}', label: 'Pharmacy Name', example: 'Manoj Medical Hall' },
-  { tag: '{{phone}}', label: 'Pharmacy Phone', example: '+91 98765 43210' },
+  { tag: '{{phone}}', label: 'Pharmacy Phone', example: '9431422744' },
   { tag: '{{address}}', label: 'Village / Landmark', example: 'Gopalpur, Ward 4' },
+  { tag: '{{amount}}', label: 'Amount Payable', example: '₹450' },
+  { tag: '{{upiLink}}', label: 'UPI Payment Link', example: 'upi://pay?pa=manojmedical@okhdfcbank&...' },
 ];
 
 export function renderTemplate(template: string, vars: TemplateVariables): string {
@@ -242,6 +248,10 @@ export function renderTemplate(template: string, vars: TemplateVariables): strin
     '{{pharmacy}}': vars.pharmacy || 'Manoj Medical Hall',
     '{{phone}}': vars.phone || '',
     '{{address}}': vars.address || '',
+    '{{locality}}': vars.locality || vars.address || '',
+    '{{amount}}': vars.amount !== undefined ? String(vars.amount) : '',
+    '{{upiLink}}': vars.upiLink || '',
+    '{{upiId}}': vars.upiId || '',
   };
 
   for (const [placeholder, val] of Object.entries(replacements)) {

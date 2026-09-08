@@ -157,7 +157,7 @@ export async function POST(request: Request) {
     const isChronicMed = Boolean(body.isChronicMed ?? (category !== 'General' && category !== 'General / OTC'));
     const currentStock = parseInt(body.currentStock, 10) || 100;
     const reorderLevel = parseInt(body.reorderLevel, 10) || 20;
-    const margItemCode = body.margItemCode?.trim() || `MAN-${Date.now().toString(36).toUpperCase()}`;
+    const margItemCode = body.margItemCode?.trim() || `MAN-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const medicine = await db.medicine.create({
       data: {

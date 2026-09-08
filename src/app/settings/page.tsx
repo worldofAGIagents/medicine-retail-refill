@@ -102,9 +102,9 @@ export default function SettingsPage() {
   const [savedUpi, setSavedUpi] = useState(false);
   const [upiError, setUpiError] = useState('');
 
-  // UPI Security Lock States (Protected by Owner PIN)
+  // UPI Security Lock States (Protected by Owner Passcode)
   const [isUpiLocked, setIsUpiLocked] = useState(true);
-  const [upiPasscode, setUpiPasscode] = useState('1234');
+  const [upiPasscode, setUpiPasscode] = useState('MANOJ2026');
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
@@ -349,7 +349,7 @@ export default function SettingsPage() {
     if (e) e.preventDefault();
     setPinError('');
     if (!pinInput.trim()) {
-      setPinError('Please enter your 4-digit security PIN.');
+      setPinError('Please enter your security passcode.');
       return;
     }
     if (pinInput.trim() === upiPasscode) {
@@ -358,7 +358,7 @@ export default function SettingsPage() {
       setPinInput('');
       setPinError('');
     } else {
-      setPinError('Incorrect security PIN. Default is 1234 unless changed.');
+      setPinError('Incorrect security passcode. Default is MANOJ2026 unless changed.');
     }
   };
 
@@ -369,15 +369,15 @@ export default function SettingsPage() {
     setChangePinSuccess('');
 
     if (currentPinInput.trim() !== upiPasscode) {
-      setChangePinError('Current security PIN is incorrect.');
+      setChangePinError('Current security passcode is incorrect.');
       return;
     }
     if (!newPinInput.trim() || newPinInput.trim().length < 4) {
-      setChangePinError('New PIN must be at least 4 digits.');
+      setChangePinError('New passcode must be at least 4 characters.');
       return;
     }
     if (newPinInput.trim() !== confirmPinInput.trim()) {
-      setChangePinError('New PIN and Confirm PIN do not match.');
+      setChangePinError('New passcode and Confirm passcode do not match.');
       return;
     }
 
@@ -392,11 +392,14 @@ export default function SettingsPage() {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upiPasscode: updatedPin }),
+        body: JSON.stringify({
+          currentPasscode: currentPinInput.trim(),
+          upiPasscode: updatedPin,
+        }),
       });
       if (res.ok) {
         setUpiPasscode(updatedPin);
-        setChangePinSuccess('Security PIN successfully updated!');
+        setChangePinSuccess('Security passcode successfully updated!');
         setTimeout(() => {
           setShowChangePinModal(false);
           setCurrentPinInput('');
@@ -405,11 +408,12 @@ export default function SettingsPage() {
           setChangePinSuccess('');
         }, 1500);
       } else {
-        setChangePinError('Failed to update PIN on server.');
+        const errData = await res.json().catch(() => null);
+        setChangePinError(errData?.error || 'Failed to update passcode on server.');
       }
     } catch {
       setUpiPasscode(updatedPin);
-      setChangePinSuccess('Security PIN updated in browser storage!');
+      setChangePinSuccess('Security passcode updated in browser storage!');
       setTimeout(() => {
         setShowChangePinModal(false);
         setCurrentPinInput('');
@@ -449,6 +453,7 @@ export default function SettingsPage() {
           upiId: cleanId,
           upiPayeeName: cleanPayee,
           upiCustomized: 'true',
+          upiPasscode: upiPasscode,
         }),
       });
       if (res.ok) {
@@ -456,7 +461,8 @@ export default function SettingsPage() {
         if (reLock) setIsUpiLocked(true);
         setTimeout(() => setSavedUpi(false), 4000);
       } else {
-        setUpiError('Failed saving to server database.');
+        const errData = await res.json().catch(() => null);
+        setUpiError(errData?.error || 'Failed saving to server database.');
       }
     } catch (err) {
       // Local storage saved it
@@ -1883,17 +1889,17 @@ export default function SettingsPage() {
                   <form onSubmit={handleVerifyUnlockPin} className="space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Admin Security PIN
+                        Admin Security Passcode
                       </label>
                       <div className="relative">
                         <input
                           type={showPinMask ? 'text' : 'password'}
                           value={pinInput}
                           onChange={(e) => setPinInput(e.target.value)}
-                          maxLength={8}
-                          placeholder="Enter 4-digit PIN"
+                          maxLength={24}
+                          placeholder="Enter passcode (default MANOJ2026)"
                           autoFocus
-                          className="w-full px-3.5 py-2.5 text-center tracking-widest text-lg font-mono font-bold border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                          className="w-full px-3.5 py-2.5 text-center tracking-wider text-base font-mono font-bold border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                         />
                         <button
                           type="button"
@@ -1910,7 +1916,7 @@ export default function SettingsPage() {
                         </p>
                       )}
                       <p className="text-[11px] text-gray-400 mt-1 text-center">
-                        Default store PIN: <span className="font-mono font-bold text-gray-600">1234</span> (can be changed once unlocked)
+                        Default store Passcode: <span className="font-mono font-bold text-gray-600">MANOJ2026</span> (can be changed once unlocked)
                       </p>
                     </div>
 
@@ -1965,42 +1971,42 @@ export default function SettingsPage() {
                   <form onSubmit={handleChangePin} className="space-y-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">
-                        Current PIN
+                        Current Passcode
                       </label>
                       <input
                         type="password"
                         value={currentPinInput}
                         onChange={(e) => setCurrentPinInput(e.target.value)}
-                        maxLength={8}
-                        placeholder="Current PIN (default 1234)"
+                        maxLength={24}
+                        placeholder="Current Passcode (default MANOJ2026)"
                         className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">
-                        New PIN (4 to 8 digits)
+                        New Passcode (min 4 characters)
                       </label>
                       <input
                         type="password"
                         value={newPinInput}
                         onChange={(e) => setNewPinInput(e.target.value)}
-                        maxLength={8}
-                        placeholder="e.g. 5678"
+                        maxLength={24}
+                        placeholder="e.g. MANOJ2026, 5678"
                         className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">
-                        Confirm New PIN
+                        Confirm New Passcode
                       </label>
                       <input
                         type="password"
                         value={confirmPinInput}
                         onChange={(e) => setConfirmPinInput(e.target.value)}
-                        maxLength={8}
-                        placeholder="Repeat new PIN"
+                        maxLength={24}
+                        placeholder="Repeat new passcode"
                         className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>

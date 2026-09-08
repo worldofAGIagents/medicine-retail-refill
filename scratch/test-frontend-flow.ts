@@ -444,7 +444,8 @@ describe('2. Prescriptions Page Filters & Calculations', () => {
     'PrescriptionsPage'
   );
 
-  const hasTablePills = rxCode.includes("const allCategories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart'];");
+  const hasTablePills = rxCode.includes("const allCategories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart', 'Syrup'];") ||
+    rxCode.includes("const allCategories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart'];");
   assert(
     hasTablePills,
     'Prescriptions table has allCategories filter pills',

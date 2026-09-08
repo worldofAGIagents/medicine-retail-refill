@@ -667,11 +667,12 @@ async function main() {
       assert.strictEqual(verifyPin('0000', settingsWithNewPin.upiPasscode), false, 'Incorrect PIN must be rejected');
       assert.strictEqual(verifyPin('1234', settingsWithNewPin.upiPasscode), false, 'Old PIN must be rejected');
 
-      // 4. Update custom UPI ID with customized flag
+      // 4. Update custom UPI ID with customized flag and passcode
       const upiPayload = {
         upiId: 'testpharmacy@okhdfcbank',
         upiPayeeName: 'Manoj Medical Hall Test',
         upiCustomized: 'true',
+        upiPasscode: newPasscode,
       };
       const saveUpiReq = new Request('http://localhost:3000/api/settings', {
         method: 'POST',

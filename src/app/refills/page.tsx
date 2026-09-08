@@ -101,7 +101,9 @@ export default function RefillsPage() {
                   (cust.prescriptions || []).forEach((p: any, idx: number) => {
                     const isSyrup = isSyrupMedicine({
                       name: p.medicine?.name,
+                      genericName: p.medicine?.genericName,
                       category: p.medicine?.category,
+                      packagingType: p.medicine?.packagingType,
                       unitType: p.unitType,
                       customPackaging: p.customPackaging,
                     });
@@ -187,7 +189,9 @@ export default function RefillsPage() {
         r.isSyrup ||
         isSyrupMedicine({
           name: r.medicine?.name,
+          genericName: r.medicine?.genericName,
           category: r.medicine?.category,
+          packagingType: (r.medicine as any)?.packagingType,
           unitType: r.unitType,
           customPackaging: r.customPackaging,
         })
@@ -429,7 +433,9 @@ export default function RefillsPage() {
     const isMilk = item.medicine?.category === 'Infant Milk';
     const isSyrup = item.isSyrup || isSyrupMedicine({
       name: item.medicine.name,
+      genericName: item.medicine.genericName,
       category: item.medicine.category,
+      packagingType: (item.medicine as any)?.packagingType,
       unitType: item.unitType,
       customPackaging: item.customPackaging,
     });

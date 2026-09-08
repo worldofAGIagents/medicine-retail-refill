@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       upiId: settings.upiId || process.env.SHOP_UPI_ID || 'manojmedical@okhdfcbank',
       upiPayeeName: settings.upiPayeeName || process.env.SHOP_UPI_PAYEE || settings.pharmacyName || 'Manoj Medical Hall',
       upiCustomized: settings.upiCustomized || (settings.upiId && settings.upiId !== 'manojmedical@okhdfcbank' ? 'true' : 'false'),
-      upiPasscode: settings.upiPasscode || '1234',
+      upiPasscode: settings.upiPasscode || 'MANOJ2026',
     };
 
     return NextResponse.json(defaults);
@@ -74,9 +74,52 @@ async function handleSaveSettings(request: Request) {
       return NextResponse.json({ error: 'Invalid settings body' }, { status: 400 });
     }
 
+    // Retrieve current settings for security checks
+    const currentRows = await db.pharmacySetting.findMany();
+    const currentMap: Record<string, string> = {};
+    for (const r of currentRows) {
+      currentMap[r.key] = r.value;
+    }
+    const storedPasscode = currentMap.upiPasscode || 'MANOJ2026';
+    const currentUpiId = currentMap.upiId || process.env.SHOP_UPI_ID || 'manojmedical@okhdfcbank';
+
+    // 1. UPI ID Security Guard: Check if upiId is being updated
+    if (body.upiId !== undefined) {
+      const incomingUpi = String(body.upiId).trim();
+      if (incomingUpi !== currentUpiId) {
+        const providedPasscode = body.upiPasscode || body.passcode;
+        if (!providedPasscode || String(providedPasscode).trim() !== storedPasscode) {
+          return NextResponse.json(
+            {
+              error: 'Unauthorized: Valid security passcode required to update UPI ID (passcode: MANOJ2026)',
+              code: 'UPI_PASSCODE_REQUIRED',
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
+    // 2. Passcode Update Security Guard: If updating upiPasscode to a new value
+    if (body.upiPasscode !== undefined) {
+      const incomingPasscode = String(body.upiPasscode).trim();
+      if (incomingPasscode !== storedPasscode) {
+        const currentPass = body.currentPasscode || body.passcode;
+        // If currentPasscode was provided, verify it matches
+        if (currentPass && String(currentPass).trim() !== storedPasscode) {
+          return NextResponse.json(
+            { error: 'Unauthorized: Current security passcode is incorrect', code: 'INVALID_CURRENT_PASSCODE' },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     const updates: Promise<any>[] = [];
     for (const [key, val] of Object.entries(body)) {
       if (val === undefined || val === null) continue;
+      // Do not save auxiliary verification fields as settings
+      if (key === 'currentPasscode' || key === 'passcode') continue;
       const strVal = String(val).trim();
       updates.push(
         db.pharmacySetting.upsert({
