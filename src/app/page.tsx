@@ -7,7 +7,7 @@ import {
   Users, RefreshCw, ClipboardList, Package, Plus, Upload,
   ArrowRight, Bell, Sparkles, UserPlus, Heart, CheckCircle2,
   TrendingUp, Phone, MapPin, Pill, Calendar, Clock, QrCode,
-  Printer, MessageCircle, AlertTriangle, Search, Filter
+  Printer, MessageCircle, AlertTriangle, Search, Filter, Receipt
 } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
@@ -296,6 +296,13 @@ export default function DashboardPage() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            <Link
+              href="/billing"
+              className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-all cursor-pointer"
+            >
+              <Receipt className="w-4 h-4" />
+              <span>+ Retail Bill</span>
+            </Link>
             <button
               onClick={() => setShowOnboardModal(true)}
               className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-all cursor-pointer"

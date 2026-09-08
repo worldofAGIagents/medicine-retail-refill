@@ -6,18 +6,19 @@ import { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Users, Pill, ClipboardList, RefreshCw,
   Package, Upload, Settings, Bell, Search, LogOut, Printer,
-  Menu, X, QrCode
+  Menu, X, QrCode, Receipt
 } from 'lucide-react';
 
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Retail Billing', href: '/billing', icon: Receipt },
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Medicines', href: '/medicines', icon: Pill },
   { name: 'Prescriptions', href: '/prescriptions', icon: ClipboardList },
   { name: 'Refills', href: '/refills', icon: RefreshCw },
   { name: 'Daily Delivery PDF', href: '/delivery-sheet', icon: Printer },
   { name: 'Instant UPI QR', href: '/quick-qr', icon: QrCode },
-  { name: 'Orders', href: '/orders', icon: Package },
+  { name: 'Orders & Sales', href: '/orders', icon: Package },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

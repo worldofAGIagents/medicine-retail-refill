@@ -4,7 +4,8 @@ import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect } from 'react';
 import {
   Package, Eye, MapPin, CheckCircle, Clock, Truck, XCircle, Search,
-  MessageCircle, IndianRupee, Banknote, Smartphone, X, QrCode, CheckCircle2
+  MessageCircle, IndianRupee, Banknote, Smartphone, X, QrCode, CheckCircle2,
+  Receipt, Printer
 } from 'lucide-react';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
 import { QRCodeSVG } from 'qrcode.react';
@@ -270,24 +271,32 @@ export default function OrdersPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Doorstep Delivery Orders</h1>
-            <p className="text-xs sm:text-sm text-gray-500">Track and dispatch chronic medicine refill deliveries</p>
+            <h1 className="text-xl sm:text-2xl font-bold font-heading text-gray-900">Orders &amp; Sales Transactions</h1>
+            <p className="text-xs sm:text-sm text-gray-500">Track counter retail bills and chronic refill doorstep deliveries</p>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
-            {['all', 'preparing', 'out_for_delivery', 'delivered'].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize whitespace-nowrap transition-colors ${
-                  statusFilter === s
-                    ? 'bg-teal-700 text-white'
-                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {s.replace(/_/g, ' ')}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            <a
+              href="/billing"
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <Receipt className="w-4 h-4" /> + Create Retail Bill
+            </a>
+            <div className="flex gap-1.5 overflow-x-auto">
+              {['all', 'preparing', 'out_for_delivery', 'delivered'].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize whitespace-nowrap transition-colors ${
+                    statusFilter === s
+                      ? 'bg-teal-700 text-white'
+                      : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {s.replace(/_/g, ' ')}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
