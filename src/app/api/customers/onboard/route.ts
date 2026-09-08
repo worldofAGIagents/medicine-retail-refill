@@ -138,6 +138,11 @@ export async function POST(request: Request) {
         lastPurchaseQty: qty,
         dailyDosage: dose,
         bufferDays: buffer,
+        medicineName: med.name,
+        category: medUpdates.category || med.category,
+        packagingType: med.packagingType,
+        unitType: item.unitType,
+        customPackaging: item.customPackaging,
       });
 
       const prescriptionData = {
@@ -147,8 +152,8 @@ export async function POST(request: Request) {
         nextRefillDate: refillCalc.nextRefillDate,
         bufferDays: buffer,
         doctorName: item.doctorName || doctorName || null,
-        customPackaging: item.customPackaging || (primaryCondition === 'Infant Milk' ? '400g Tin' : `${med.unitsPerPack} tabs/strip`),
-        unitType: primaryCondition === 'Infant Milk' ? 'grams' : (item.unitType || 'tablets'),
+        customPackaging: item.customPackaging || (refillCalc.isSyrup ? '1 Bottle (Syrup)' : primaryCondition === 'Infant Milk' ? '400g Tin' : `${med.unitsPerPack} tabs/strip`),
+        unitType: refillCalc.isSyrup ? (item.unitType || 'ml') : primaryCondition === 'Infant Milk' ? 'grams' : (item.unitType || 'tablets'),
         isActive: true,
       };
 

@@ -6,6 +6,7 @@ import {
   Search, Plus, Calendar, Activity, Pill, User, Clock, CheckCircle2,
   ChevronDown, X, Edit3, PackageCheck, Milk, Sparkles, Filter
 } from 'lucide-react';
+import { isSyrupMedicine } from '@/lib/refill-engine';
 
 interface Medicine {
   id: string;
@@ -221,23 +222,33 @@ export default function PrescriptionsPage() {
     ? Number(customUnitsPerPack) || 10
     : selectedMed?.unitsPerPack || 10;
 
+  const isSyrup = isSyrupMedicine(selectedMed);
   const isInfantMilk = selectedMed?.category === 'Infant Milk' || customUnitType === 'grams';
 
-  // Calculate supply and refill dates
-  const daysOfSupply = qty && dosage ? Math.floor(qty / dosage) : 0;
+  // Calculate supply and refill dates (for syrup, schedule for next day)
+  const daysOfSupply = isSyrup ? 1 : qty && dosage ? Math.floor(qty / dosage) : 0;
   const purchaseDateObj = new Date(lastPurchase || Date.now());
   const runOutDateObj = new Date(purchaseDateObj);
-  runOutDateObj.setDate(runOutDateObj.getDate() + daysOfSupply);
+  runOutDateObj.setDate(runOutDateObj.getDate() + (isSyrup ? 1 : daysOfSupply));
 
   const refillTargetDate = new Date(runOutDateObj);
-  refillTargetDate.setDate(refillTargetDate.getDate() - bufferDays);
+  if (!isSyrup) {
+    refillTargetDate.setDate(refillTargetDate.getDate() - bufferDays);
+  }
 
   const handleSelectMedicine = (med: Medicine) => {
     setMedicineId(med.id);
     setMedSearch(med.name);
     setMedDropdownOpen(false);
 
-    if (med.category === 'Infant Milk') {
+    if (isSyrupMedicine(med)) {
+      setCustomUnitType('ml');
+      setDosage(10); // 10 ml daily
+      setQty(med.unitsPerPack > 1 ? med.unitsPerPack : 100);
+      setCustomPackagingText(`1 Bottle (${med.unitsPerPack > 1 ? med.unitsPerPack + 'ml' : 'Syrup'})`);
+      setCustomUnitsPerPack(med.unitsPerPack || 1);
+      setBufferDays(0);
+    } else if (med.category === 'Infant Milk') {
       setCustomUnitType('grams');
       setDosage(40); // 40 grams / day default for infant milk
       setQty(med.unitsPerPack || 400); // 1 tin (400g)
@@ -338,7 +349,7 @@ export default function PrescriptionsPage() {
     return p.medicine?.category?.toLowerCase().includes(tableCategory.toLowerCase());
   });
 
-  const allCategories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart'];
+  const allCategories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Heart', 'Syrup'];
 
   return (
     <DashboardLayout>
@@ -824,20 +835,24 @@ export default function PrescriptionsPage() {
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-teal-700" />
                         <span className="text-xs uppercase font-bold tracking-wider text-teal-800">
-                          Refill Forecast Engine
+                          Refill Forecast Engine {isSyrup && '• Liquid Syrup Schedule'}
                         </span>
                       </div>
                       <span className="text-xs font-bold text-teal-900 bg-white px-2.5 py-0.5 rounded-full border border-teal-100">
-                        {daysOfSupply} Days of Supply
+                        {isSyrup ? 'Next Day Refill' : `${daysOfSupply} Days of Supply`}
                       </span>
                     </div>
 
                     <p className="text-sm font-bold text-gray-900">
-                      {qty} {customUnitType} ÷ {dosage} {customUnitType}/day = <span className="text-teal-700">{daysOfSupply} days</span>
+                      {isSyrup ? (
+                        <>Liquid Syrup / Suspension: <span className="text-teal-700">Scheduled for Next Day Refill</span></>
+                      ) : (
+                        <>{qty} {customUnitType} ÷ {dosage} {customUnitType}/day = <span className="text-teal-700">{daysOfSupply} days</span></>
+                      )}
                     </p>
 
                     <div className="flex justify-between text-xs text-gray-600 pt-1 border-t border-teal-100">
-                      <span>Runs out: <strong>{runOutDateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
+                      <span>Runs out / Follow-up: <strong>{runOutDateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
                       <span className="text-teal-800 font-bold">
                         WhatsApp Reminder: {refillTargetDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </span>

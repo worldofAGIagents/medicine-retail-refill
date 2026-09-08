@@ -27,9 +27,14 @@ export async function GET(request: Request) {
       lastPurchaseDate: p.lastPurchaseDate!,
       lastPurchaseQty: p.lastPurchaseQty!,
       dailyDosage: p.dailyDosage,
-      bufferDays: p.bufferDays
+      bufferDays: p.bufferDays,
+      medicineName: p.medicine?.name,
+      category: p.medicine?.category,
+      packagingType: p.medicine?.packagingType,
+      unitType: p.unitType || undefined,
+      customPackaging: p.customPackaging || undefined,
     });
-    return { ...p, refillCalc: calc };
+    return { ...p, isSyrup: calc.isSyrup, refillCalc: calc };
   }).sort((a, b) => a.refillCalc.daysRemaining - b.refillCalc.daysRemaining);
 
   return NextResponse.json(refills);
@@ -40,14 +45,22 @@ export async function POST(request: Request) {
     const { prescriptionId, quantity, date } = await request.json();
     const pDate = new Date(date || Date.now());
     
-    const prescription = await db.prescription.findUnique({ where: { id: prescriptionId } });
+    const prescription = await db.prescription.findUnique({
+      where: { id: prescriptionId },
+      include: { medicine: true },
+    });
     if (!prescription) return NextResponse.json({ error: 'Prescription not found' }, { status: 404 });
 
     const calc = calculateRefill({
       lastPurchaseDate: pDate,
       lastPurchaseQty: quantity,
       dailyDosage: prescription.dailyDosage,
-      bufferDays: prescription.bufferDays
+      bufferDays: prescription.bufferDays,
+      medicineName: prescription.medicine?.name,
+      category: prescription.medicine?.category,
+      packagingType: prescription.medicine?.packagingType,
+      unitType: prescription.unitType || undefined,
+      customPackaging: prescription.customPackaging || undefined,
     });
 
     const updated = await db.prescription.update({

@@ -9,6 +9,7 @@ import {
   Navigation
 } from 'lucide-react';
 import { QuickQrModal } from '@/components/QuickQrModal';
+import { isSyrupMedicine } from '@/lib/refill-engine';
 
 interface RefillItem {
   id: string;
@@ -18,6 +19,7 @@ interface RefillItem {
   nextRefillDate: string;
   customPackaging?: string | null;
   unitType?: string | null;
+  isSyrup?: boolean;
   customer: {
     id: string;
     name: string;
@@ -87,8 +89,16 @@ export default function DeliverySheetPage() {
                 const clientRefills: RefillItem[] = [];
                 localList.forEach((cust: any) => {
                   (cust.prescriptions || []).forEach((p: any, idx: number) => {
+                    const isSyrup = isSyrupMedicine({
+                      name: p.medicine?.name,
+                      category: p.medicine?.category,
+                      unitType: p.unitType,
+                      customPackaging: p.customPackaging,
+                    });
                     const refillDateStr = p.nextRefillDate || new Date().toISOString();
-                    const diffDays = Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    const diffDays = isSyrup
+                      ? 1
+                      : Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                     let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = 'ok';
                     if (diffDays <= 0) urgency = 'overdue';
                     else if (diffDays <= 2) urgency = 'urgent';
@@ -104,6 +114,7 @@ export default function DeliverySheetPage() {
                       nextRefillDate: refillDateStr,
                       customPackaging: p.customPackaging,
                       unitType: p.unitType || 'tablets',
+                      isSyrup,
                       customer: {
                         id: cust.id,
                         name: cust.name,
@@ -169,11 +180,49 @@ export default function DeliverySheetPage() {
     year: 'numeric',
   });
 
-  // Filter items based on days remaining
-  const overdueList = refillsList.filter((r) => r.refillCalc?.daysRemaining <= 0);
-  const todayList = refillsList.filter((r) => r.refillCalc?.daysRemaining > 0 && r.refillCalc?.daysRemaining <= 1);
-  const tomorrowList = refillsList.filter((r) => r.refillCalc?.daysRemaining === 2);
-  const dayAfterList = refillsList.filter((r) => r.refillCalc?.daysRemaining === 3);
+  const checkIsSyrup = (r: RefillItem) => {
+    return (
+      r.isSyrup ||
+      isSyrupMedicine({
+        name: r.medicine?.name,
+        genericName: r.medicine?.genericName,
+        category: r.medicine?.category,
+        packagingType: (r.medicine as any)?.packagingType,
+        unitType: r.unitType,
+        customPackaging: r.customPackaging,
+      })
+    );
+  };
+
+  const isItemOverdue = (r: RefillItem) => {
+    const isSyrup = checkIsSyrup(r);
+    const days = r.refillCalc?.daysRemaining ?? 99;
+    return isSyrup ? days < 0 : days <= 0;
+  };
+
+  const isItemToday = (r: RefillItem) => {
+    const isSyrup = checkIsSyrup(r);
+    const days = r.refillCalc?.daysRemaining ?? 99;
+    return isSyrup ? days === 0 : (days > 0 && days <= 1);
+  };
+
+  const isItemTomorrow = (r: RefillItem) => {
+    const isSyrup = checkIsSyrup(r);
+    const days = r.refillCalc?.daysRemaining ?? 99;
+    return isSyrup ? days === 1 : days === 2;
+  };
+
+  const isItemDayAfter = (r: RefillItem) => {
+    const isSyrup = checkIsSyrup(r);
+    const days = r.refillCalc?.daysRemaining ?? 99;
+    return isSyrup ? days === 2 : days === 3;
+  };
+
+  // Filter items based on days remaining & syrup next-day scheduling
+  const overdueList = refillsList.filter(isItemOverdue);
+  const todayList = refillsList.filter(isItemToday);
+  const tomorrowList = refillsList.filter(isItemTomorrow);
+  const dayAfterList = refillsList.filter(isItemDayAfter);
 
   // Extract list of unique villages in refills
   const villageList = Array.from(
@@ -189,10 +238,10 @@ export default function DeliverySheetPage() {
     const days = r.refillCalc?.daysRemaining ?? 99;
     let matchTab = true;
     if (activeTab === 'all') matchTab = days <= 3; // 3 days window + overdue
-    else if (activeTab === 'overdue') matchTab = days <= 0;
-    else if (activeTab === 'today') matchTab = days > 0 && days <= 1;
-    else if (activeTab === 'tomorrow') matchTab = days === 2;
-    else if (activeTab === 'dayAfter') matchTab = days === 3;
+    else if (activeTab === 'overdue') matchTab = isItemOverdue(r);
+    else if (activeTab === 'today') matchTab = isItemToday(r);
+    else if (activeTab === 'tomorrow') matchTab = isItemTomorrow(r);
+    else if (activeTab === 'dayAfter') matchTab = isItemDayAfter(r);
 
     if (!matchTab) return false;
     if (selectedVillage !== 'all') {
@@ -234,10 +283,13 @@ export default function DeliverySheetPage() {
       const packs = Math.ceil(item.lastPurchaseQty / (item.medicine.unitsPerPack || 10));
       const bill = item.medicine.mrp * packs;
       const isMilk = item.medicine.category === 'Infant Milk';
+      const isSyrup = checkIsSyrup(item);
+      const packLabel = isSyrup ? 'Bottle (Syrup)' : isMilk ? 'Tin' : 'पत्ता';
+      const syrupTag = isSyrup ? ' • Next Day Refill' : '';
 
       msg += `${idx + 1}️⃣ *${item.customer.name}*\n`;
       msg += `📍 पता: ${item.customer.address || (item.customer.locality ? `गाँव: ${item.customer.locality}, मुज़फ़्फ़रपुर` : 'सरफुद्दीनपुर')}\n`;
-      msg += `💊 दवाई: ${item.medicine.name} (${packs} ${isMilk ? 'Tin' : 'पत्ता'})\n`;
+      msg += `💊 दवाई: ${item.medicine.name} (${packs} ${packLabel}${syrupTag})\n`;
       msg += `💰 वसूली बिल: ₹${bill} (कैश / UPI)\n`;
       msg += `📞 मरीज फोन: ${item.customer.phone}\n`;
       if (item.customer.altPhone) {
@@ -399,7 +451,7 @@ export default function DeliverySheetPage() {
                 : 'bg-white border border-gray-200 text-blue-700 hover:bg-blue-50'
             }`}
           >
-            Tomorrow / 2 Days ({tomorrowList.length})
+            Tomorrow / Next Day ({tomorrowList.length})
           </button>
 
           <button
@@ -548,6 +600,7 @@ export default function DeliverySheetPage() {
                     const packs = Math.ceil(item.lastPurchaseQty / (item.medicine.unitsPerPack || 10));
                     const itemBill = item.medicine.mrp * packs;
                     const isMilk = item.medicine.category === 'Infant Milk';
+                    const isSyrup = checkIsSyrup(item);
                     const isPacked = packedItems[item.id] || false;
                     const isDelivered = deliveredItems[item.id] || false;
 
@@ -608,9 +661,21 @@ export default function DeliverySheetPage() {
                           )}
 
                           <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.2 rounded mt-1 ${
-                            days <= 0 ? 'bg-red-100 text-red-800' : days <= 1 ? 'bg-amber-100 text-amber-800' : 'bg-blue-50 text-blue-800'
+                            days <= 0
+                              ? 'bg-red-100 text-red-800'
+                              : isSyrup && days === 1
+                              ? 'bg-blue-100 text-blue-800'
+                              : days <= 1
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-blue-50 text-blue-800'
                           }`}>
-                            {days <= 0 ? 'Overdue' : days === 1 ? 'Due Today' : `${days} days left`}
+                            {days <= 0
+                              ? 'Overdue'
+                              : isSyrup && days === 1
+                              ? 'Next Day Refill (Tomorrow)'
+                              : days === 1
+                              ? 'Due Today'
+                              : `${days} days left`}
                           </span>
                         </td>
 
@@ -641,22 +706,31 @@ export default function DeliverySheetPage() {
 
                         {/* Item & Packaging */}
                         <td className="py-2 px-3">
-                          <div className="flex items-center gap-1.5">
-                            {isMilk ? <Milk className="w-3.5 h-3.5 text-purple-700 shrink-0" /> : <Pill className="w-3.5 h-3.5 text-teal-700 shrink-0" />}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {isMilk ? (
+                              <Milk className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                            ) : (
+                              <Pill className="w-3.5 h-3.5 text-teal-700 shrink-0" />
+                            )}
                             <span className="font-bold text-gray-900">{item.medicine.name}</span>
+                            {isSyrup && (
+                              <span className="text-[9px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-1.5 py-0.2 rounded shadow-2xs">
+                                Syrup • Next Day
+                              </span>
+                            )}
                           </div>
                           <p className="text-[10px] text-gray-500 mt-0.5 font-medium">
-                            Pack: {item.customPackaging || (isMilk ? '400g Tin' : `${item.medicine.unitsPerPack} tabs/strip`)} • Usage: {item.dailyDosage} {item.unitType === 'grams' ? 'g/day' : 'tab/day'}
+                            Pack: {item.customPackaging || (isSyrup ? '1 Bottle (Syrup)' : isMilk ? '400g Tin' : `${item.medicine.unitsPerPack} tabs/strip`)} • Usage: {item.dailyDosage} {isSyrup ? (item.unitType || 'ml/day') : item.unitType === 'grams' ? 'g/day' : 'tab/day'}
                           </p>
                         </td>
 
                         {/* Qty to Deliver */}
                         <td className="py-2 px-3 text-center">
                           <span className="font-bold text-gray-900">
-                            {packs} {isMilk ? (packs === 1 ? 'Tin' : 'Tins') : (packs === 1 ? 'Strip' : 'Strips')}
+                            {packs} {isSyrup ? (packs === 1 ? 'Bottle' : 'Bottles') : isMilk ? (packs === 1 ? 'Tin' : 'Tins') : (packs === 1 ? 'Strip' : 'Strips')}
                           </span>
                           <p className="text-[10px] text-gray-500">
-                            ({item.lastPurchaseQty} {item.unitType || 'tabs'})
+                            ({item.lastPurchaseQty} {isSyrup ? (item.unitType || 'ml') : (item.unitType || 'tabs')})
                           </p>
                         </td>
 

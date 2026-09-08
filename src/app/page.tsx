@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
+import { isSyrupMedicine } from '@/lib/refill-engine';
 
 interface PrescriptionItem {
   id: string;
@@ -57,6 +58,7 @@ interface RefillCardItem {
   nextRefillDateStr: string;
   daysRemaining: number;
   urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok';
+  isSyrup?: boolean;
 }
 
 function sanitizeCustomer(c: CustomerRecord): CustomerRecord {
@@ -140,7 +142,14 @@ export default function DashboardPage() {
       (cust.prescriptions || []).forEach((p) => {
         if (!p.medicine?.name) return;
 
-        let refillDateMs = todayMs + 15 * 86400000;
+        const isSyrup = isSyrupMedicine({
+          name: p.medicine.name,
+          genericName: p.medicine.genericName,
+          category: p.medicine.category,
+          customPackaging: p.customPackaging,
+        });
+
+        let refillDateMs = todayMs + (isSyrup ? 1 : 15) * 86400000;
         let dateStr = '';
         if (p.nextRefillDate) {
           const parsed = new Date(p.nextRefillDate).getTime();
@@ -176,6 +185,7 @@ export default function DashboardPage() {
           nextRefillDateStr: dateStr,
           daysRemaining,
           urgency,
+          isSyrup,
         });
       });
     });
@@ -563,9 +573,14 @@ export default function DashboardPage() {
 
                           {/* Medicine & Dosage */}
                           <td className="py-3 px-4">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <Pill className="w-3.5 h-3.5 text-teal-600 shrink-0" />
                               <span className="font-semibold text-gray-800 text-xs sm:text-sm">{refill.medicineName}</span>
+                              {refill.isSyrup && (
+                                <span className="text-[9px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-1.5 py-0.2 rounded shadow-2xs">
+                                  Syrup • Next Day
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-gray-400 mt-0.5 pl-5">
                               {refill.dailyDosage} dose/day {refill.customPackaging ? `• ${refill.customPackaging}` : ''}
@@ -599,6 +614,8 @@ export default function DashboardPage() {
                             >
                               {isOverdue
                                 ? `${Math.abs(refill.daysRemaining)}d overdue`
+                                : refill.isSyrup && refill.daysRemaining === 1
+                                ? 'Next Day (Tomorrow)'
                                 : isUrgent
                                 ? `In ${refill.daysRemaining} days (Urgent)`
                                 : isDueSoon

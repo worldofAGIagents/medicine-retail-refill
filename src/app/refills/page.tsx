@@ -9,7 +9,7 @@ import {
   Copy, X, Printer, FastForward, Layers, Send, Play, Pause
 } from 'lucide-react';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
-
+import { isSyrupMedicine } from '@/lib/refill-engine';
 
 interface RefillItem {
   id: string;
@@ -19,6 +19,7 @@ interface RefillItem {
   nextRefillDate: string;
   customPackaging?: string | null;
   unitType?: string | null;
+  isSyrup?: boolean;
   customer: {
     id: string;
     name: string;
@@ -98,8 +99,16 @@ export default function RefillsPage() {
                 const clientRefills: RefillItem[] = [];
                 localList.forEach((cust: any) => {
                   (cust.prescriptions || []).forEach((p: any, idx: number) => {
+                    const isSyrup = isSyrupMedicine({
+                      name: p.medicine?.name,
+                      category: p.medicine?.category,
+                      unitType: p.unitType,
+                      customPackaging: p.customPackaging,
+                    });
                     const refillDateStr = p.nextRefillDate || new Date().toISOString();
-                    const diffDays = Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    const diffDays = isSyrup
+                      ? 1
+                      : Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                     let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = 'ok';
                     if (diffDays <= 0) urgency = 'overdue';
                     else if (diffDays <= 2) urgency = 'urgent';
@@ -115,6 +124,7 @@ export default function RefillsPage() {
                       nextRefillDate: refillDateStr,
                       customPackaging: p.customPackaging,
                       unitType: p.unitType || 'tablets',
+                      isSyrup,
                       customer: {
                         id: cust.id,
                         name: cust.name,
@@ -172,6 +182,17 @@ export default function RefillsPage() {
   const filteredRefills = refillsList.filter((r) => {
     if (categoryFilter === 'All') return true;
     const catQuery = categoryFilter.toLowerCase();
+    if (catQuery === 'syrup') {
+      return (
+        r.isSyrup ||
+        isSyrupMedicine({
+          name: r.medicine?.name,
+          category: r.medicine?.category,
+          unitType: r.unitType,
+          customPackaging: r.customPackaging,
+        })
+      );
+    }
     const medCat = r.medicine?.category?.toLowerCase() || '';
     if (catQuery === 'bp') return medCat.includes('bp') || medCat.includes('blood pressure');
     return medCat.includes(catQuery);
@@ -406,6 +427,12 @@ export default function RefillsPage() {
     const days = item.refillCalc?.daysRemaining ?? 0;
     const refillDate = new Date(item.refillCalc.nextRefillDate);
     const isMilk = item.medicine?.category === 'Infant Milk';
+    const isSyrup = item.isSyrup || isSyrupMedicine({
+      name: item.medicine.name,
+      category: item.medicine.category,
+      unitType: item.unitType,
+      customPackaging: item.customPackaging,
+    });
     const medsCountForPatient = customerMedsCount[item.customer?.id] || 1;
 
     return (
@@ -422,6 +449,12 @@ export default function RefillsPage() {
               }`}>
                 {item.medicine.category}
               </span>
+
+              {isSyrup && (
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                  Syrup • Next Day Refill
+                </span>
+              )}
 
               {medsCountForPatient > 1 && (
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -450,7 +483,7 @@ export default function RefillsPage() {
               <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
                 days <= 0 ? 'bg-red-100 text-red-700' : days <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700'
               }`}>
-                {days <= 0 ? `${Math.abs(days)} days overdue` : `${days} days left`}
+                {days <= 0 ? `${Math.abs(days)} days overdue` : isSyrup && days === 1 ? 'Next Day (Tomorrow)' : `${days} days left`}
               </span>
             </div>
           </div>
@@ -499,7 +532,7 @@ export default function RefillsPage() {
     );
   };
 
-  const categories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk'];
+  const categories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Syrup'];
 
   return (
     <DashboardLayout>

@@ -9,7 +9,8 @@ export async function GET() {
 
     // Calculate upcoming refills with deduplication
     const rawPrescriptions = await db.prescription.findMany({
-      where: { isActive: true, lastPurchaseDate: { not: null }, lastPurchaseQty: { not: null } }
+      where: { isActive: true, lastPurchaseDate: { not: null }, lastPurchaseQty: { not: null } },
+      include: { medicine: true }
     });
 
     const seenPresc = new Set<string>();
@@ -29,7 +30,12 @@ export async function GET() {
           lastPurchaseDate: p.lastPurchaseDate,
           lastPurchaseQty: p.lastPurchaseQty,
           dailyDosage: p.dailyDosage,
-          bufferDays: p.bufferDays
+          bufferDays: p.bufferDays,
+          medicineName: p.medicine?.name,
+          category: p.medicine?.category,
+          packagingType: p.medicine?.packagingType,
+          unitType: p.unitType || undefined,
+          customPackaging: p.customPackaging || undefined,
         });
         if (['overdue', 'urgent', 'due_soon'].includes(urgency)) {
           upcomingRefillsCount++;

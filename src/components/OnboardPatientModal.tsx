@@ -11,6 +11,7 @@ import {
   DEFAULT_CHRONIC_CATEGORY,
   normalizeChronicCategory
 } from '@/lib/medicine-classifier';
+import { isSyrupMedicine } from '@/lib/refill-engine';
 
 interface Medicine {
   id: string;
@@ -215,16 +216,37 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
 
   // Compute refill dates preview for an item
   const getRefillPreview = (item: PrescribedMedicineItem) => {
+    const isSyrup = isSyrupMedicine({
+      name: item.medicine.name,
+      genericName: item.medicine.genericName,
+      category: item.category || item.medicine.category,
+      packagingType: item.medicine.packagingType,
+      unitType: item.unitMode === 'tins' ? 'grams' : item.unitMode === 'strips' ? 'strips' : 'tablets',
+    });
+
+    if (isSyrup) {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + 1);
+      return {
+        supplyDays: 1,
+        isSyrup: true,
+        refillDateStr: 'Tomorrow (Next Day)',
+        targetDateIso: targetDate.toISOString(),
+      };
+    }
+
     const supplyDays = item.dailyDosage > 0 ? Math.floor(item.totalQty / item.dailyDosage) : 0;
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + Math.max(1, supplyDays - item.bufferDays));
     return {
       supplyDays,
+      isSyrup: false,
       refillDateStr: targetDate.toLocaleDateString('en-IN', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
       }),
+      targetDateIso: targetDate.toISOString(),
     };
   };
 
@@ -314,11 +336,15 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             id: `rx-${Date.now()}-${pIdx}`,
             dailyDosage: Number(item.dailyDosage) || 1,
             lastPurchaseQty: Number(item.totalQty) || 30,
-            nextRefillDate: preview.refillDateStr,
-            customPackaging: `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`,
+            nextRefillDate: preview.targetDateIso || preview.refillDateStr,
+            customPackaging: preview.isSyrup
+              ? '1 Bottle (Syrup)'
+              : item.unitMode === 'tins'
+              ? `${packUnits}g Tin`
+              : `${item.stripCount} Strip(s) (${packUnits} tabs/strip)`,
             medicine: {
               ...item.medicine,
-              category: item.category || effectiveCondition,
+              category: item.category || (preview.isSyrup ? 'Syrup' : effectiveCondition),
               mrp: item.customMrp || item.medicine.mrp,
               unitsPerPack: packUnits,
             },
@@ -926,6 +952,11 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                               Refill Target
                             </span>
                             <span className="text-xs font-bold text-teal-800">{refillDateStr}</span>
+                            {getRefillPreview(item).isSyrup && (
+                              <span className="block mt-0.5 w-fit px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-bold rounded">
+                                Syrup (Next Day)
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 pt-1 border-t border-gray-100">
                             <span>~{supplyDays}d supply</span>

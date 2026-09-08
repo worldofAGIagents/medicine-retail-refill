@@ -27,6 +27,11 @@ export async function POST(request: Request) {
             lastPurchaseQty: p.lastPurchaseQty,
             dailyDosage: p.dailyDosage,
             bufferDays: p.bufferDays,
+            medicineName: p.medicine?.name,
+            category: p.medicine?.category,
+            packagingType: p.medicine?.packagingType,
+            unitType: p.unitType || undefined,
+            customPackaging: p.customPackaging || undefined,
           });
           refillCalc = {
             daysRemaining: calc.daysRemaining,

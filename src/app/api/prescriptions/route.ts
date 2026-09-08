@@ -15,7 +15,12 @@ export async function GET() {
         lastPurchaseDate: p.lastPurchaseDate,
         lastPurchaseQty: p.lastPurchaseQty,
         dailyDosage: p.dailyDosage,
-        bufferDays: p.bufferDays
+        bufferDays: p.bufferDays,
+        medicineName: p.medicine?.name,
+        category: p.medicine?.category,
+        packagingType: p.medicine?.packagingType,
+        unitType: p.unitType || undefined,
+        customPackaging: p.customPackaging || undefined,
       });
     }
     return { ...p, refillStatus };
@@ -30,11 +35,20 @@ export async function POST(request: Request) {
     let nextRefillDate = body.nextRefillDate;
     
     if (!nextRefillDate && body.lastPurchaseDate && body.lastPurchaseQty) {
+      let med = null;
+      if (body.medicineId) {
+        med = await db.medicine.findUnique({ where: { id: body.medicineId } });
+      }
       const calc = calculateRefill({
         lastPurchaseDate: new Date(body.lastPurchaseDate),
         lastPurchaseQty: body.lastPurchaseQty,
         dailyDosage: body.dailyDosage,
-        bufferDays: body.bufferDays || 3
+        bufferDays: body.bufferDays || 3,
+        medicineName: med?.name,
+        category: med?.category,
+        packagingType: med?.packagingType,
+        unitType: body.unitType,
+        customPackaging: body.customPackaging,
       });
       nextRefillDate = calc.nextRefillDate;
     }
