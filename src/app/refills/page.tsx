@@ -1,7 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layout';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Bell, ShoppingBag, Clock, Calendar, CheckCircle2, Phone,
@@ -75,8 +75,13 @@ export default function RefillsPage() {
   const [pharmacyName, setPharmacyName] = useState('MedRefill Chemist & Druggist');
   const [settings, setSettings] = useState<any>(null);
 
-  const loadRefills = () => {
-    setLoading(true);
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+
+  const loadRefills = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = Date.now();
 
     const localCustomers = getLocalCustomers();
     const withoutRx = localCustomers.filter(c => !c.prescriptions || c.prescriptions.length === 0);
@@ -90,15 +95,18 @@ export default function RefillsPage() {
     }
 
     // 2. Fetch authoritative refills from server and deeply merge with local customers
-    fetch(`/api/refills?t=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        const rawServerList: RefillItem[] = Array.isArray(data) ? data : [];
-        const merged = mergeRefillLists(rawServerList as any, localCustomers);
-        setRefillsList(merged as any);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    try {
+      const res = await fetch(`/api/refills?t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      const rawServerList: RefillItem[] = Array.isArray(data) ? data : [];
+      const merged = mergeRefillLists(rawServerList as any, localCustomers);
+      setRefillsList(merged as any);
+    } catch (err) {
+      console.warn('Failed to fetch refills from server:', err);
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
+    }
 
     fetch(`/api/settings?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
@@ -109,25 +117,37 @@ export default function RefillsPage() {
         }
       })
       .catch(() => {});
-  };
+  }, []);
 
   useEffect(() => {
     loadRefills();
 
-    const handleSync = () => {
-      loadRefills();
+    const handleLocalSync = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.source === 'server_sync') return; // Ignore our own sync
+
+      const localCustomers = getLocalCustomers();
+      const withoutRx = localCustomers.filter(c => !c.prescriptions || c.prescriptions.length === 0);
+      setPendingOnboardPatients(withoutRx);
+      setRefillsList((prev) => mergeRefillLists(prev as any, localCustomers) as any);
     };
 
-    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-    window.addEventListener('storage', handleSync);
-    window.addEventListener('focus', handleSync);
+    const handleFocus = () => {
+      if (Date.now() - lastFetchTimeRef.current > 30000) {
+        loadRefills();
+      }
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalSync);
+    window.addEventListener('storage', handleLocalSync);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-      window.removeEventListener('storage', handleSync);
-      window.removeEventListener('focus', handleSync);
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalSync);
+      window.removeEventListener('storage', handleLocalSync);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [loadRefills]);
 
   const filteredRefills = refillsList.filter((r) => {
     if (categoryFilter === 'All') return true;
@@ -610,7 +630,7 @@ export default function RefillsPage() {
                 </div>
                 <div className="space-y-3">
                   {overdue.map((r) => (
-                    <RefillCard key={r.id} item={r} borderClass="border-l-4 border-l-red-500 bg-red-50/20" />
+                    <RefillCard key={`refill-${r.customer?.phone || r.customer?.id || ''}-${(r.medicine?.name || '').trim().toLowerCase()}`} item={r} borderClass="border-l-4 border-l-red-500 bg-red-50/20" />
                   ))}
                 </div>
               </div>
@@ -625,7 +645,7 @@ export default function RefillsPage() {
                 </div>
                 <div className="space-y-3">
                   {dueToday.map((r) => (
-                    <RefillCard key={r.id} item={r} borderClass="border-l-4 border-l-amber-500 bg-amber-50/20" />
+                    <RefillCard key={`refill-${r.customer?.phone || r.customer?.id || ''}-${(r.medicine?.name || '').trim().toLowerCase()}`} item={r} borderClass="border-l-4 border-l-amber-500 bg-amber-50/20" />
                   ))}
                 </div>
               </div>
@@ -640,7 +660,7 @@ export default function RefillsPage() {
                 </div>
                 <div className="space-y-3">
                   {thisWeek.map((r) => (
-                    <RefillCard key={r.id} item={r} borderClass="border-l-4 border-l-blue-400" />
+                    <RefillCard key={`refill-${r.customer?.phone || r.customer?.id || ''}-${(r.medicine?.name || '').trim().toLowerCase()}`} item={r} borderClass="border-l-4 border-l-blue-400" />
                   ))}
                 </div>
               </div>
@@ -655,7 +675,7 @@ export default function RefillsPage() {
                 </div>
                 <div className="space-y-3">
                   {upcoming.map((r) => (
-                    <RefillCard key={r.id} item={r} borderClass="border-l-4 border-l-green-400" />
+                    <RefillCard key={`refill-${r.customer?.phone || r.customer?.id || ''}-${(r.medicine?.name || '').trim().toLowerCase()}`} item={r} borderClass="border-l-4 border-l-green-400" />
                   ))}
                 </div>
               </div>

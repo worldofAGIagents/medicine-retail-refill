@@ -1,7 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layout';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, Plus, Calendar, Activity, Pill, User, Clock, CheckCircle2,
   ChevronDown, X, Edit3, PackageCheck, Milk, Sparkles, Filter
@@ -55,6 +55,7 @@ interface PrescriptionItem {
     urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future';
     nextRefillDate: string;
   };
+  createdAt?: string;
 }
 
 export default function PrescriptionsPage() {
@@ -142,41 +143,59 @@ export default function PrescriptionsPage() {
     return items;
   };
 
-  const loadPrescriptions = () => {
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+
+  const loadPrescriptions = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = Date.now();
+
     const localRx = getPrescriptionsFromLocal();
     if (localRx.length > 0) {
       setPrescriptions((prev) => (prev.length === 0 ? localRx : prev));
     }
 
     setLoading(true);
-    fetch(`/api/prescriptions?t=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        const serverList: PrescriptionItem[] = Array.isArray(data) ? data : [];
-        const freshLocalRx = getPrescriptionsFromLocal();
+    try {
+      const res = await fetch(`/api/prescriptions?t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      const serverList: PrescriptionItem[] = Array.isArray(data) ? data : [];
+      const freshLocalRx = getPrescriptionsFromLocal();
 
-        const combined = [...serverList, ...freshLocalRx];
-        const seen = new Set<string>();
-        const cleanList = combined.filter((item) => {
-          const pPhone = clean10DigitPhone(item.customer?.phone || '');
-          const pName = (item.customer?.name || '').trim().toLowerCase();
-          const mName = (item.medicine?.name || '').trim().toLowerCase();
-          const key = `${pPhone || pName}::${mName}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-
-        setPrescriptions(cleanList);
-        setLoading(false);
-      })
-      .catch(() => {
-        setPrescriptions(getPrescriptionsFromLocal());
-        setLoading(false);
+      const combined = [...serverList, ...freshLocalRx];
+      const seen = new Set<string>();
+      const cleanList = combined.filter((item) => {
+        const pPhone = clean10DigitPhone(item.customer?.phone || '');
+        const pName = (item.customer?.name || '').trim().toLowerCase();
+        const mName = (item.medicine?.name || '').trim().toLowerCase();
+        const key = `${pPhone || pName}::${mName}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
       });
-  };
 
-  const loadCustomersList = () => {
+      // Deterministic stable sort
+      cleanList.sort((a, b) => {
+        const timeA = new Date(a.nextRefillDate || a.createdAt || 0).getTime();
+        const timeB = new Date(b.nextRefillDate || b.createdAt || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        const nameDiff = (a.customer?.name || '').localeCompare(b.customer?.name || '');
+        if (nameDiff !== 0) return nameDiff;
+        return (a.medicine?.name || '').localeCompare(b.medicine?.name || '');
+      });
+
+      setPrescriptions(cleanList);
+    } catch (err) {
+      console.warn('Failed to fetch prescriptions:', err);
+      setPrescriptions(getPrescriptionsFromLocal());
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
+    }
+  }, []);
+
+  const loadCustomersList = useCallback(() => {
     const local = getLocalCustomers();
     if (local.length > 0) {
       setCustomers((prev) => (prev.length === 0 ? (local as any) : prev));
@@ -191,7 +210,7 @@ export default function PrescriptionsPage() {
       .catch(() => {
         setCustomers(getLocalCustomers() as any);
       });
-  };
+  }, []);
 
   const fetchMedicinesForDropdown = (query = '', cat = 'All') => {
     const params = new URLSearchParams({ limit: '60' });
@@ -212,21 +231,34 @@ export default function PrescriptionsPage() {
     loadCustomersList();
     fetchMedicinesForDropdown('', 'All');
 
-    const handleSync = () => {
-      loadPrescriptions();
+    const handleLocalSync = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.source === 'server_sync') return; // Ignore our own sync
+
+      const localRx = getPrescriptionsFromLocal();
+      if (localRx.length > 0) {
+        setPrescriptions(localRx);
+      }
       loadCustomersList();
     };
 
-    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-    window.addEventListener('storage', handleSync);
-    window.addEventListener('focus', handleSync);
+    const handleFocus = () => {
+      if (Date.now() - lastFetchTimeRef.current > 30000) {
+        loadPrescriptions();
+        loadCustomersList();
+      }
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalSync);
+    window.addEventListener('storage', handleLocalSync);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-      window.removeEventListener('storage', handleSync);
-      window.removeEventListener('focus', handleSync);
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalSync);
+      window.removeEventListener('storage', handleLocalSync);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [loadPrescriptions, loadCustomersList]);
 
   // Close dropdowns on outside click
   useEffect(() => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layout';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Printer, Download, Calendar, Phone, MapPin, CheckCircle2, Clock,
   AlertTriangle, Filter, ChevronRight, Package, UserCheck, Milk, Pill,
@@ -72,7 +72,14 @@ export default function DeliverySheetPage() {
     note: string;
   } | null>(null);
 
-  const loadDeliveryRefills = () => {
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+
+  const loadDeliveryRefills = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = Date.now();
+
     try {
       const savedRider = localStorage.getItem('manoj_rider_name');
       const savedPhone = localStorage.getItem('manoj_rider_phone');
@@ -90,15 +97,18 @@ export default function DeliverySheetPage() {
     }
 
     // 2. Fetch authoritative refills from server and merge
-    fetch(`/api/refills?t=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        const rawServerList: RefillItem[] = Array.isArray(data) ? data : [];
-        const merged = mergeRefillLists(rawServerList as any, localCustomers);
-        setRefillsList(merged as any);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    try {
+      const res = await fetch(`/api/refills?t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      const rawServerList: RefillItem[] = Array.isArray(data) ? data : [];
+      const merged = mergeRefillLists(rawServerList as any, localCustomers);
+      setRefillsList(merged as any);
+    } catch (err) {
+      console.warn('Failed to fetch delivery refills:', err);
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
+    }
 
     // Load settings from DB
     fetch(`/api/settings?t=${Date.now()}`, { cache: 'no-store' })
@@ -110,25 +120,35 @@ export default function DeliverySheetPage() {
         if (data?.phone) setShopPhone(data.phone);
       })
       .catch(() => {});
-  };
+  }, []);
 
   useEffect(() => {
     loadDeliveryRefills();
 
-    const handleSync = () => {
-      loadDeliveryRefills();
+    const handleLocalSync = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.source === 'server_sync') return; // Ignore our own sync
+
+      const localCustomers = getLocalCustomers();
+      setRefillsList((prev) => mergeRefillLists(prev as any, localCustomers) as any);
     };
 
-    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-    window.addEventListener('storage', handleSync);
-    window.addEventListener('focus', handleSync);
+    const handleFocus = () => {
+      if (Date.now() - lastFetchTimeRef.current > 30000) {
+        loadDeliveryRefills();
+      }
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalSync);
+    window.addEventListener('storage', handleLocalSync);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-      window.removeEventListener('storage', handleSync);
-      window.removeEventListener('focus', handleSync);
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalSync);
+      window.removeEventListener('storage', handleLocalSync);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [loadDeliveryRefills]);
 
   const todayDateStr = new Date().toLocaleDateString('en-IN', {
     weekday: 'long',

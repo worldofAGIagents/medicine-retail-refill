@@ -127,17 +127,40 @@ export function getLocalCustomers(): CustomerRecord[] {
   }
 }
 
+export interface SaveCustomerOptions {
+  source?: 'user_action' | 'server_sync' | 'storage_event';
+  broadcast?: boolean;
+}
+
 /**
  * Save customers list to localStorage and broadcast event across components/tabs
+ * Guarded against no-op writes and infinite loop echoes
  */
-export function saveLocalCustomers(customers: CustomerRecord[]): void {
+export function saveLocalCustomers(
+  customers: CustomerRecord[],
+  options: SaveCustomerOptions = { source: 'user_action', broadcast: true }
+): void {
   if (typeof window === 'undefined') return;
   try {
     const sanitized = customers.map(sanitizeCustomer);
-    localStorage.setItem(LOCAL_CUSTOMERS_KEY, JSON.stringify(sanitized));
-    window.dispatchEvent(
-      new CustomEvent(CUSTOMERS_UPDATED_EVENT, { detail: { customers: sanitized } })
-    );
+    const newJson = JSON.stringify(sanitized);
+    const currentJson = localStorage.getItem(LOCAL_CUSTOMERS_KEY);
+
+    // LOOP GUARD: Skip write and event if payload is 100% identical
+    if (currentJson === newJson) {
+      return;
+    }
+
+    localStorage.setItem(LOCAL_CUSTOMERS_KEY, newJson);
+
+    // Only broadcast if explicitly permitted (defaults to true for user actions)
+    if (options.broadcast !== false) {
+      window.dispatchEvent(
+        new CustomEvent(CUSTOMERS_UPDATED_EVENT, {
+          detail: { customers: sanitized, source: options.source || 'user_action' },
+        })
+      );
+    }
   } catch (err) {
     console.warn('Failed to save local customers to storage:', err);
   }
@@ -198,6 +221,9 @@ export function upsertLocalCustomer(customer: CustomerRecord): CustomerRecord[] 
  * 3. Keeps local-only patients that the server hasn't saved yet.
  * 4. Auto-reseeds server asynchronously if any local patient is missing on server.
  */
+// In-flight reseed cache to prevent duplicate POST storms
+const inFlightReseedSet = new Set<string>();
+
 export function mergeCustomerLists(
   serverList: CustomerRecord[],
   localList: CustomerRecord[],
@@ -243,6 +269,7 @@ export function mergeCustomerLists(
         locality: lc.locality || serverRec.locality,
         primaryCondition: lc.primaryCondition || serverRec.primaryCondition,
         prescriptions: bestPrescriptions,
+        updatedAt: (lc as any).updatedAt || (serverRec as any).updatedAt || new Date().toISOString(),
       });
     } else {
       // Local patient completely missing on server
@@ -250,25 +277,39 @@ export function mergeCustomerLists(
     }
   });
 
-  const finalMerged = Array.from(mergedMap.values()).map(sanitizeCustomer);
+  // 3. CANONICAL DETERMINISTIC SORT:
+  // Sort by updatedAt/createdAt desc -> Name asc -> Phone/ID
+  const finalMerged = Array.from(mergedMap.values())
+    .map(sanitizeCustomer)
+    .sort((a, b) => {
+      const aTime = new Date((a as any).updatedAt || a.createdAt || 0).getTime();
+      const bTime = new Date((b as any).updatedAt || b.createdAt || 0).getTime();
+      if (bTime !== aTime) return bTime - aTime;
+      const nameDiff = (a.name || '').localeCompare(b.name || '', 'hi-IN', { sensitivity: 'base' });
+      if (nameDiff !== 0) return nameDiff;
+      return (a.phone || a.id || '').localeCompare(b.phone || b.id || '');
+    });
 
-  // 3. Auto-reseed server if enabled and running in browser
+  // 4. Auto-reseed server if enabled and running in browser
   if (reseedMissingToServer && typeof window !== 'undefined') {
     const missingOnServer = cleanLocal.filter((lc) => {
       const p = clean10DigitPhone(lc.phone);
-      return p && !serverPhoneMap.has(p);
+      return p && !serverPhoneMap.has(p) && !inFlightReseedSet.has(p);
     });
 
     if (missingOnServer.length > 0) {
       missingOnServer.forEach((mc) => {
-        const cleanMeds = (mc.prescriptions || []).map((p) => ({
-          medicineId: (p.medicine as any)?.id,
-          category: p.medicine?.category || mc.primaryCondition,
-          dailyDosage: p.dailyDosage || 1,
-          lastPurchaseQty: p.lastPurchaseQty || 30,
-          customPackaging: p.customPackaging,
-          unitType: p.unitType || 'tablets',
-          customMrp: p.medicine?.mrp,
+        const p = clean10DigitPhone(mc.phone);
+        inFlightReseedSet.add(p);
+
+        const cleanMeds = (mc.prescriptions || []).map((pr) => ({
+          medicineId: (pr.medicine as any)?.id,
+          category: pr.medicine?.category || mc.primaryCondition,
+          dailyDosage: pr.dailyDosage || 1,
+          lastPurchaseQty: pr.lastPurchaseQty || 30,
+          customPackaging: pr.customPackaging,
+          unitType: pr.unitType || 'tablets',
+          customMrp: pr.medicine?.mrp,
         }));
 
         fetch('/api/customers/onboard', {
@@ -276,7 +317,7 @@ export function mergeCustomerLists(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: mc.name,
-            phone: clean10DigitPhone(mc.phone),
+            phone: p,
             altPhone: mc.altPhone ? clean10DigitPhone(mc.altPhone) : undefined,
             address: mc.address || `गाँव: ${mc.locality || 'Sarfuddinpur'}`,
             locality: mc.locality || 'Sarfuddinpur',
@@ -284,7 +325,11 @@ export function mergeCustomerLists(
             primaryCondition: mc.primaryCondition || 'Blood Pressure',
             medicines: cleanMeds,
           }),
-        }).catch((err) => console.warn('Customer auto-reseed warning:', err));
+        })
+          .catch((err) => {
+            console.warn('Customer auto-reseed warning:', err);
+            inFlightReseedSet.delete(p);
+          });
       });
     }
   }
@@ -415,5 +460,26 @@ export function mergeRefillLists(
     });
   });
 
-  return merged.sort((a, b) => a.refillCalc.daysRemaining - b.refillCalc.daysRemaining);
+  // DETERMINISTIC MULTI-TIER STABLE SORT
+  return merged.sort((a, b) => {
+    // 1. Urgency / daysRemaining ascending (most urgent first)
+    if (a.refillCalc.daysRemaining !== b.refillCalc.daysRemaining) {
+      return a.refillCalc.daysRemaining - b.refillCalc.daysRemaining;
+    }
+    // 2. Next refill date timestamp
+    const aDate = new Date(a.nextRefillDate || a.refillCalc.nextRefillDate).getTime() || 0;
+    const bDate = new Date(b.nextRefillDate || b.refillCalc.nextRefillDate).getTime() || 0;
+    if (aDate !== bDate) return aDate - bDate;
+
+    // 3. Customer name alphabetical
+    const custDiff = (a.customer?.name || '').localeCompare(b.customer?.name || '', 'hi-IN', { sensitivity: 'base' });
+    if (custDiff !== 0) return custDiff;
+
+    // 4. Medicine name alphabetical
+    const medDiff = (a.medicine?.name || '').localeCompare(b.medicine?.name || '', 'hi-IN', { sensitivity: 'base' });
+    if (medDiff !== 0) return medDiff;
+
+    // 5. Unique Item ID tie-breaker
+    return (a.id || '').localeCompare(b.id || '');
+  });
 }

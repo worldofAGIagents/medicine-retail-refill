@@ -1,7 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/layout';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Plus, Phone, MapPin, Pill, X, Check, Eye, UserPlus, Heart, Sparkles, Calendar, Clock } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import {
@@ -57,53 +57,88 @@ function sanitizeCustomer(c: Customer): Customer {
 }
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getLocalCustomers() as Customer[];
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return getLocalCustomers().length === 0;
+    }
+    return true;
+  });
   const [showOnboardModal, setShowOnboardModal] = useState(false);
   const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
 
-  const loadCustomers = () => {
-    // 1. Instantly load from local storage
-    const localList = getLocalCustomers() as Customer[];
-    if (localList.length > 0) {
-      setCustomers(localList);
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+
+  const loadCustomers = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = Date.now();
+
+    try {
+      const localList = getLocalCustomers() as Customer[];
+      const res = await fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' });
+      const serverData = await res.json();
+      const rawSList: Customer[] = Array.isArray(serverData) ? serverData : [];
+      const cleanMerged = mergeCustomerLists(rawSList as any, localList as any, true) as Customer[];
+      setCustomers(cleanMerged);
+      // Suppress broadcast so server sync does not re-trigger an event loop!
+      saveLocalCustomers(cleanMerged as any, { source: 'server_sync', broadcast: false });
+    } catch (e) {
+      console.warn('Failed to fetch customers:', e);
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // 1. Initial hydration
+    const local = getLocalCustomers() as Customer[];
+    if (local.length > 0) {
+      setCustomers(local);
       setLoading(false);
     }
 
-    // 2. Fetch authoritative records from server with cache-busting
-    fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((serverData) => {
-        const rawSList: Customer[] = Array.isArray(serverData) ? serverData : [];
-        const cleanMerged = mergeCustomerLists(rawSList as any, localList as any, true) as Customer[];
-        setCustomers(cleanMerged);
-        saveLocalCustomers(cleanMerged as any);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
+    // 2. Fetch server truth
     loadCustomers();
 
-    const handleSync = () => {
-      loadCustomers();
+    // 3. Local update handler: updates in-memory state WITHOUT network fetch
+    const handleLocalUpdate = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.source === 'server_sync') return; // Ignore our own sync
+
+      if (customEvt.detail?.customers) {
+        setCustomers(customEvt.detail.customers);
+      } else {
+        setCustomers(getLocalCustomers() as Customer[]);
+      }
     };
 
-    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-    window.addEventListener('storage', handleSync);
-    window.addEventListener('focus', handleSync);
+    // 4. Throttled focus handler: re-fetch only if > 30s have elapsed
+    const handleFocus = () => {
+      if (Date.now() - lastFetchTimeRef.current > 30000) {
+        loadCustomers();
+      }
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalUpdate);
+    window.addEventListener('storage', handleLocalUpdate);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-      window.removeEventListener('storage', handleSync);
-      window.removeEventListener('focus', handleSync);
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalUpdate);
+      window.removeEventListener('storage', handleLocalUpdate);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [loadCustomers]);
 
   const categories = ['All', 'Blood Pressure', 'Diabetes', 'Thyroid', 'Heart', 'Infant Milk', 'Cholesterol', 'Gastric'];
 

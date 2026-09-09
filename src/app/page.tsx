@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout';
 import Link from 'next/link';
 import {
@@ -40,10 +40,10 @@ interface CustomerRecord {
   id: string;
   name: string;
   phone: string;
-  altPhone?: string;
-  address?: string;
-  locality?: string;
-  city?: string;
+  altPhone?: string | null;
+  address?: string | null;
+  locality?: string | null;
+  city?: string | null;
   primaryCondition?: string | null;
   whatsappEnabled?: boolean;
   createdAt?: string;
@@ -82,58 +82,95 @@ function sanitizeCustomer(c: CustomerRecord): CustomerRecord {
 }
 
 export default function DashboardPage() {
-  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<CustomerRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      return getLocalCustomers() as any;
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return getLocalCustomers().length === 0;
+    }
+    return true;
+  });
   const [showOnboardModal, setShowOnboardModal] = useState(false);
   const [refillFilter, setRefillFilter] = useState<'all' | 'urgent' | 'week' | 'later'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVillage, setSelectedVillage] = useState('All');
 
-  // Load live data from localStorage immediately, then reconcile with server
-  const loadData = useCallback(() => {
-    const localList = getLocalCustomers();
-    if (localList.length > 0) {
-      setCustomers(localList as any);
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+
+  // Authoritative server reconciliation (non-looping)
+  const fetchServerData = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = Date.now();
+
+    try {
+      const res = await fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' });
+      const serverData = await res.json();
+      const rawSList = Array.isArray(serverData) ? serverData : [];
+      const cleanMerged = mergeCustomerLists(rawSList as any, getLocalCustomers(), true);
+      setCustomers(cleanMerged as any);
+      // Suppress broadcast so server sync does not re-trigger an event loop!
+      saveLocalCustomers(cleanMerged, { source: 'server_sync', broadcast: false });
+    } catch (e) {
+      console.warn('Dashboard fetch server data error:', e);
+    } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
-
-    // Fetch server data with cache busting
-    fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((serverData) => {
-        const rawSList = Array.isArray(serverData) ? serverData : [];
-        const cleanMerged = mergeCustomerLists(rawSList as any, getLocalCustomers(), true);
-        setCustomers(cleanMerged as any);
-        saveLocalCustomers(cleanMerged);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
   }, []);
 
   useEffect(() => {
-    loadData();
+    // 1. Initial hydration check
+    const local = getLocalCustomers();
+    if (local.length > 0) {
+      setCustomers(local as any);
+      setLoading(false);
+    }
 
-    const handleSync = () => {
-      loadData();
+    // 2. Fetch fresh data from server
+    fetchServerData();
+
+    // 3. Local update handler: updates in-memory state WITHOUT network fetch
+    const handleLocalUpdate = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.source === 'server_sync') return; // Ignore our own sync
+
+      if (customEvt.detail?.customers) {
+        setCustomers(customEvt.detail.customers);
+      } else {
+        setCustomers(getLocalCustomers() as any);
+      }
     };
 
-    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-    window.addEventListener('storage', handleSync);
-    window.addEventListener('focus', handleSync);
+    // 4. Throttled focus handler: re-fetch only if > 30s have elapsed
+    const handleFocus = () => {
+      if (Date.now() - lastFetchTimeRef.current > 30000) {
+        fetchServerData();
+      }
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalUpdate);
+    window.addEventListener('storage', handleLocalUpdate);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
-      window.removeEventListener('storage', handleSync);
-      window.removeEventListener('focus', handleSync);
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleLocalUpdate);
+      window.removeEventListener('storage', handleLocalUpdate);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [loadData]);
+  }, [fetchServerData]);
 
   // Compute all refill items with live urgency & days countdown
   const allRefills = useMemo<RefillCardItem[]>(() => {
     const items: RefillCardItem[] = [];
-    const todayMs = Date.now();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
 
     customers.forEach((cust) => {
       const village = cust.locality || (cust.address ? cust.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
@@ -171,8 +208,12 @@ export default function DashboardPage() {
         else if (daysRemaining <= 2) urgency = 'urgent';
         else if (daysRemaining <= 7) urgency = 'due_soon';
 
+        const cleanPhone = (cust.phone || '').replace(/[^0-9]/g, '').slice(-10) || cust.id;
+        const cleanMed = (p.medicine.name || '').trim().toLowerCase().replace(/\s+/g, '-');
+        const stableId = `refill-${cleanPhone}-${cleanMed}`;
+
         items.push({
-          id: p.id || `refill-${cust.id}-${p.medicine.name}`,
+          id: stableId,
           customerId: cust.id,
           customerName: cust.name,
           phone: cust.phone,
@@ -190,19 +231,48 @@ export default function DashboardPage() {
       });
     });
 
-    // Sort: overdue first, then soonest refill dates
-    return items.sort((a, b) => a.daysRemaining - b.daysRemaining);
+    // 5-Tier Deterministic Stable Sort:
+    // 1. Days remaining ascending (overdue first)
+    // 2. Next refill target date timestamp ascending
+    // 3. Customer name alphabetical (A-Z)
+    // 4. Medicine name alphabetical (A-Z)
+    // 5. Stable ID tie-breaker
+    return items.sort((a, b) => {
+      if (a.daysRemaining !== b.daysRemaining) {
+        return a.daysRemaining - b.daysRemaining;
+      }
+      const timeA = new Date(a.nextRefillDateStr).getTime() || 0;
+      const timeB = new Date(b.nextRefillDateStr).getTime() || 0;
+      if (timeA !== timeB) return timeA - timeB;
+
+      const nameDiff = a.customerName.localeCompare(b.customerName, 'hi-IN', { sensitivity: 'base' });
+      if (nameDiff !== 0) return nameDiff;
+
+      const medDiff = a.medicineName.localeCompare(b.medicineName, 'hi-IN', { sensitivity: 'base' });
+      if (medDiff !== 0) return medDiff;
+
+      return a.id.localeCompare(b.id);
+    });
   }, [customers]);
 
-  // Village summary list
-  const villageCounts = useMemo(() => {
+  // Deterministically sorted village list (count descending, name alphabetical)
+  const sortedVillages = useMemo(() => {
     const counts: Record<string, number> = {};
     customers.forEach((c) => {
       const v = c.locality || (c.address ? c.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
       counts[v] = (counts[v] || 0) + 1;
     });
-    return counts;
+
+    return Object.entries(counts).sort(([vilA, countA], [vilB, countB]) => {
+      if (countB !== countA) return countB - countA;
+      return vilA.localeCompare(vilB, 'hi-IN', { sensitivity: 'base' });
+    });
   }, [customers]);
+
+  // Fast count lookup map for badge counts
+  const villageCounts = useMemo(() => {
+    return Object.fromEntries(sortedVillages);
+  }, [sortedVillages]);
 
   // Total unique active medicines across all patients
   const uniqueMedicinesCount = useMemo(() => {
@@ -672,7 +742,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {Object.entries(villageCounts).map(([vil, count]) => {
+                  {sortedVillages.map(([vil, count]) => {
                     const isSelected = selectedVillage === vil;
                     return (
                       <button
@@ -786,7 +856,7 @@ export default function DashboardPage() {
                     const village = cust.locality || (cust.address ? cust.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
 
                     return (
-                      <div key={cust.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2">
+                      <div key={`patient-${cust.phone || cust.id}`} className="pt-2 first:pt-0 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-[10px] shrink-0">
                             {initials || 'CU'}
@@ -816,7 +886,7 @@ export default function DashboardPage() {
         <OnboardPatientModal
           isOpen={showOnboardModal}
           onClose={() => setShowOnboardModal(false)}
-          onSuccess={() => loadData()}
+          onSuccess={() => fetchServerData()}
         />
       </div>
     </DashboardLayout>
