@@ -86,20 +86,30 @@ export async function POST(request: Request) {
       });
     }
 
-    // Deduplicate medList by medicineId to guarantee zero duplicate prescriptions
-    const uniqueMedMap = new Map<string, any>();
+    // Deduplicate medList by medicineId or name to guarantee zero duplicate prescriptions
+    const dedupedMedList: any[] = [];
+    const seenMedKeys = new Set<string>();
+
     for (const item of medList) {
-      if (item.medicineId) {
-        uniqueMedMap.set(item.medicineId, item);
+      const key = (item.medicineId || item.name || '').trim().toLowerCase();
+      if (key && !seenMedKeys.has(key)) {
+        seenMedKeys.add(key);
+        dedupedMedList.push(item);
       }
     }
-    const dedupedMedList = Array.from(uniqueMedMap.values());
 
     // 3. Process each medicine: dynamically categorize & create prescription
     for (const item of dedupedMedList) {
-      if (!item.medicineId) continue;
-      const med = await db.medicine.findUnique({ where: { id: item.medicineId } });
+      let med = null;
+      if (item.medicineId) {
+        med = await db.medicine.findUnique({ where: { id: item.medicineId } });
+      } else if (item.name) {
+        med = await db.medicine.findFirst({
+          where: { name: { contains: item.name.trim(), mode: 'insensitive' } },
+        });
+      }
       if (!med) continue;
+      item.medicineId = med.id;
 
       // DYNAMIC LEARNING & CUSTOM OVERRIDES: Update medicine MRP, packaging & chronic category
       const medUpdates: any = {};

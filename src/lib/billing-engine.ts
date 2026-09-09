@@ -206,6 +206,23 @@ export function generateInvoiceNumber(seed?: number | string): string {
 }
 
 /**
+ * Generates an NPCI-compliant UPI payment deep link for QR codes and instant payment.
+ * Formats amount to exactly 2 decimal places as per UPI specifications.
+ */
+export function generateUpiPaymentLink(
+  amount: number | string,
+  invoiceNo?: string,
+  pharmacy: Partial<PharmacyDetails> = {}
+): string {
+  const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
+  const payeeName = (pharmacy.upiPayeeName || pharmacy.name || 'Manoj Medical Hall').trim();
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) || 0 : Number(amount) || 0;
+  const formattedAmount = numAmount.toFixed(2);
+  const note = invoiceNo ? `Bill ${invoiceNo}` : 'Medicine Bill';
+  return `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payeeName)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
+}
+
+/**
  * Generates a clean, friendly WhatsApp message for sharing bills with customers
  */
 export function generateWhatsAppBillText(
@@ -219,7 +236,7 @@ export function generateWhatsAppBillText(
   }
 ): string {
   const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
-  const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(pharmacy.upiPayeeName || pharmacy.name)}&am=${bill.netPayable}&cu=INR&tn=${encodeURIComponent(`Bill ${bill.invoiceNo}`)}`;
+  const upiLink = generateUpiPaymentLink(bill.netPayable, bill.invoiceNo, pharmacy);
 
   let msg = `🧾 *${pharmacy.name.toUpperCase()}*\n`;
   msg += `📍 ${pharmacy.address}\n`;
@@ -250,9 +267,11 @@ export function generateWhatsAppBillText(
   msg += `Payment Mode: *${bill.paymentMode.toUpperCase()}*\n`;
   msg += `--------------------------------\n`;
 
-  if (bill.paymentMode === 'upi' || bill.paymentMode === 'credit') {
-    msg += `👉 *Tap here to pay instantly via UPI:*\n${upiLink}\n\n`;
-    msg += `UPI ID: \`${cleanUpi}\`\n`;
+  if (cleanUpi) {
+    if (bill.paymentMode === 'upi' || bill.paymentMode === 'credit') {
+      msg += `👉 *Tap here to pay instantly via UPI:*\n${upiLink}\n\n`;
+    }
+    msg += `💳 UPI ID: \`${cleanUpi}\`\n`;
   }
 
   msg += `🙏 धन्यवाद! Get Well Soon! / स्वस्थ रहें!`;

@@ -17,21 +17,21 @@ export async function GET(request: Request) {
     if (category && category !== 'All') {
       if (category.toLowerCase() === 'bp') {
         where.OR = [
-          { category: { contains: 'BP' } },
-          { category: { contains: 'Blood Pressure' } }
+          { category: { contains: 'BP', mode: 'insensitive' } },
+          { category: { contains: 'Blood Pressure', mode: 'insensitive' } }
         ];
       } else {
-        where.category = { contains: category };
+        where.category = { contains: category, mode: 'insensitive' };
       }
     }
 
     if (query) {
       const searchConditions = [
-        { name: { contains: query } },
-        { genericName: { contains: query } },
-        { manufacturer: { contains: query } },
-        { margItemCode: { contains: query } },
-        { saltComposition: { contains: query } },
+        { name: { contains: query, mode: 'insensitive' } },
+        { genericName: { contains: query, mode: 'insensitive' } },
+        { manufacturer: { contains: query, mode: 'insensitive' } },
+        { margItemCode: { contains: query, mode: 'insensitive' } },
+        { saltComposition: { contains: query, mode: 'insensitive' } },
       ];
 
       if (where.OR) {
@@ -52,11 +52,11 @@ export async function GET(request: Request) {
     if (total === 0 && query && category && category !== 'All') {
       finalWhere = {
         OR: [
-          { name: { contains: query } },
-          { genericName: { contains: query } },
-          { manufacturer: { contains: query } },
-          { margItemCode: { contains: query } },
-          { saltComposition: { contains: query } },
+          { name: { contains: query, mode: 'insensitive' } },
+          { genericName: { contains: query, mode: 'insensitive' } },
+          { manufacturer: { contains: query, mode: 'insensitive' } },
+          { margItemCode: { contains: query, mode: 'insensitive' } },
+          { saltComposition: { contains: query, mode: 'insensitive' } },
         ]
       };
       total = await db.medicine.count({ where: finalWhere });

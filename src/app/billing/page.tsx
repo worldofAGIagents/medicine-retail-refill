@@ -19,6 +19,7 @@ import {
   isInfantFormula,
   generateInvoiceNumber,
   generateWhatsAppBillText,
+  generateUpiPaymentLink,
   PharmacyDetails,
 } from '@/lib/billing-engine';
 import { detectMedicineCategory } from '@/lib/medicine-classifier';
@@ -96,8 +97,8 @@ export default function BillingPage() {
   const loadStoredPharmacyDetails = (): PharmacyDetails => {
     const defaults: PharmacyDetails = {
       name: 'Manoj Medical Hall',
-      address: 'Sarfuddinpur, Muzaffarpur, Bihar (843118)',
-      phone: '',
+      address: 'Sarfuddinpur, Gopalpur, Muzaffarpur, Bihar - 843118',
+      phone: '9431422744',
       dlNumber: '',
       gstin: '',
       upiId: 'manojmedical@okhdfcbank',
@@ -112,7 +113,7 @@ export default function BillingPage() {
         const profile = JSON.parse(profileRaw);
         if (profile.name) defaults.name = profile.name;
         if (profile.address) defaults.address = profile.address;
-        if (profile.phone !== undefined && profile.phone !== '+91 98765 43210') {
+        if (profile.phone !== undefined && profile.phone !== '+91 98765 43210' && profile.phone !== '') {
           defaults.phone = profile.phone;
         }
         if (profile.dlNumber !== undefined && profile.dlNumber !== 'DL-2024-001234') {
@@ -124,7 +125,7 @@ export default function BillingPage() {
       }
 
       const storedPhone = localStorage.getItem('manoj_pharmacy_phone');
-      if (storedPhone !== null && storedPhone !== '+91 98765 43210') {
+      if (storedPhone !== null && storedPhone !== '+91 98765 43210' && storedPhone !== '') {
         defaults.phone = storedPhone;
       }
 
@@ -176,20 +177,14 @@ export default function BillingPage() {
         .then((data) => {
           if (data && !data.error) {
             setPharmacy((prev) => {
-              const hasLocalUpi = typeof window !== 'undefined' && localStorage.getItem('manoj_upi_customized') === 'true';
               const localUpi = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
-              const effectiveUpi = (hasLocalUpi && localUpi && localUpi.includes('@'))
-                ? localUpi.trim()
-                : (data.upiId || prev.upiId);
+              const serverUpi = data.upiId && data.upiId.includes('@') ? data.upiId.trim() : null;
+              const effectiveUpi = serverUpi || (localUpi && localUpi.includes('@') ? localUpi.trim() : prev.upiId);
 
-              const hasLocalPhone = typeof window !== 'undefined' && (
-                localStorage.getItem('manoj_pharmacy_phone') !== null ||
-                localStorage.getItem('manoj_pharmacy_profile') !== null
-              );
               let localPhone: string | undefined = undefined;
               if (typeof window !== 'undefined') {
                 const direct = localStorage.getItem('manoj_pharmacy_phone');
-                if (direct !== null) {
+                if (direct !== null && direct !== '+91 98765 43210') {
                   localPhone = direct;
                 } else {
                   const prof = localStorage.getItem('manoj_pharmacy_profile');
@@ -199,9 +194,16 @@ export default function BillingPage() {
                 }
               }
 
-              const effectivePhone = (hasLocalPhone && localPhone !== undefined && localPhone !== '+91 98765 43210')
-                ? localPhone
-                : (data.phone !== undefined && data.phone !== '+91 98765 43210' ? data.phone : prev.phone);
+              const serverPhone = data.phone !== undefined && data.phone !== '+91 98765 43210' && data.phone !== '' ? data.phone : null;
+              const effectivePhone = serverPhone || (localPhone !== undefined && localPhone !== '+91 98765 43210' ? localPhone : prev.phone);
+
+              // Update localStorage cache to match server truth
+              if (typeof window !== 'undefined') {
+                try {
+                  if (effectiveUpi) localStorage.setItem('manoj_upi_id', effectiveUpi);
+                  if (effectivePhone) localStorage.setItem('manoj_pharmacy_phone', effectivePhone);
+                } catch {}
+              }
 
               return {
                 ...prev,

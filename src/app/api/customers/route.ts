@@ -9,14 +9,16 @@ export async function GET(request: Request) {
   const search = searchParams.get('search') || '';
   
   const customers = await db.customer.findMany({
-    where: {
-      OR: [
-        { name: { contains: search } },
-        { phone: { contains: search } },
-        { address: { contains: search } },
-        { city: { contains: search } }
-      ]
-    },
+    where: search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { phone: { contains: search } },
+            { address: { contains: search, mode: 'insensitive' } },
+            { city: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {},
     include: {
       prescriptions: {
         where: { isActive: true },
