@@ -10,6 +10,11 @@ import {
 } from 'lucide-react';
 import { QuickQrModal } from '@/components/QuickQrModal';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import {
+  getLocalCustomers,
+  mergeRefillLists,
+  CUSTOMERS_UPDATED_EVENT,
+} from '@/lib/customer-sync';
 
 interface RefillItem {
   id: string;
@@ -67,7 +72,7 @@ export default function DeliverySheetPage() {
     note: string;
   } | null>(null);
 
-  useEffect(() => {
+  const loadDeliveryRefills = () => {
     try {
       const savedRider = localStorage.getItem('manoj_rider_name');
       const savedPhone = localStorage.getItem('manoj_rider_phone');
@@ -75,94 +80,28 @@ export default function DeliverySheetPage() {
       if (savedPhone) setRiderPhone(savedPhone);
     } catch {}
 
-    // Load refills with fallback to local storage
-    fetch('/api/refills')
+    const localCustomers = getLocalCustomers();
+
+    // 1. Immediately hydrate with local customer refills for offline-first instant render
+    const initialLocalRefills = mergeRefillLists([], localCustomers);
+    if (initialLocalRefills.length > 0) {
+      setRefillsList(initialLocalRefills as any);
+      setLoading(false);
+    }
+
+    // 2. Fetch authoritative refills from server and merge
+    fetch(`/api/refills?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        let list: RefillItem[] = Array.isArray(data) ? data : [];
-        if (list.length === 0) {
-          try {
-            const raw = localStorage.getItem('manoj_local_customers');
-            if (raw) {
-              const localList = JSON.parse(raw);
-              if (Array.isArray(localList) && localList.length > 0) {
-                const clientRefills: RefillItem[] = [];
-                localList.forEach((cust: any) => {
-                  (cust.prescriptions || []).forEach((p: any, idx: number) => {
-                    const isSyrup = isSyrupMedicine({
-                      name: p.medicine?.name,
-                      category: p.medicine?.category,
-                      unitType: p.unitType,
-                      customPackaging: p.customPackaging,
-                    });
-                    const refillDateStr = p.nextRefillDate || new Date().toISOString();
-                    const diffDays = isSyrup
-                      ? 1
-                      : Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                    let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = 'ok';
-                    if (diffDays <= 0) urgency = 'overdue';
-                    else if (diffDays <= 2) urgency = 'urgent';
-                    else if (diffDays <= 5) urgency = 'due_soon';
-                    else if (diffDays <= 10) urgency = 'ok';
-                    else urgency = 'future';
-
-                    clientRefills.push({
-                      id: p.id || `local-refill-${cust.id}-${idx}`,
-                      dailyDosage: Number(p.dailyDosage) || 1,
-                      lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
-                      lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
-                      nextRefillDate: refillDateStr,
-                      customPackaging: p.customPackaging,
-                      unitType: p.unitType || 'tablets',
-                      isSyrup,
-                      customer: {
-                        id: cust.id,
-                        name: cust.name,
-                        phone: cust.phone,
-                        altPhone: cust.altPhone,
-                        address: cust.address,
-                        locality: cust.locality,
-                        city: cust.city,
-                      },
-                      medicine: {
-                        id: p.medicine?.id || `med-${idx}`,
-                        name: p.medicine?.name || 'Medicine',
-                        genericName: p.medicine?.genericName || '',
-                        category: p.medicine?.category || 'Chronic',
-                        unitsPerPack: p.medicine?.unitsPerPack || 10,
-                        currentStock: p.medicine?.currentStock || 50,
-                        mrp: p.medicine?.mrp || 0,
-                      },
-                      refillCalc: {
-                        daysRemaining: diffDays,
-                        urgency,
-                        nextRefillDate: refillDateStr,
-                      },
-                    });
-                  });
-                });
-                list = clientRefills;
-              }
-            }
-          } catch (e) {}
-        }
-
-        // Deduplicate by customer + medicine
-        const seen = new Set<string>();
-        const cleanList = list.filter((item) => {
-          const key = `${item.customer?.phone || item.customer?.name}::${item.medicine?.name}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-
-        setRefillsList(cleanList);
+        const rawServerList: RefillItem[] = Array.isArray(data) ? data : [];
+        const merged = mergeRefillLists(rawServerList as any, localCustomers);
+        setRefillsList(merged as any);
         setLoading(false);
       })
       .catch(() => setLoading(false));
 
     // Load settings from DB
-    fetch('/api/settings')
+    fetch(`/api/settings?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data?.pharmacyName) setPharmacyName(data.pharmacyName);
@@ -171,6 +110,24 @@ export default function DeliverySheetPage() {
         if (data?.phone) setShopPhone(data.phone);
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadDeliveryRefills();
+
+    const handleSync = () => {
+      loadDeliveryRefills();
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
   }, []);
 
   const todayDateStr = new Date().toLocaleDateString('en-IN', {

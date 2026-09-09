@@ -38,7 +38,13 @@ export async function GET(request: Request) {
     return { ...p, isSyrup: calc.isSyrup, refillCalc: calc };
   }).sort((a, b) => a.refillCalc.daysRemaining - b.refillCalc.daysRemaining);
 
-  return NextResponse.json(refills);
+  return NextResponse.json(refills, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  });
 }
 
 export async function POST(request: Request) {

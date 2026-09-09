@@ -12,6 +12,7 @@ import {
   normalizeChronicCategory
 } from '@/lib/medicine-classifier';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import { clean10DigitPhone, upsertLocalCustomer } from '@/lib/customer-sync';
 
 interface Medicine {
   id: string;
@@ -260,11 +261,13 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       return;
     }
 
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const cleanPhone = clean10DigitPhone(phone);
     if (cleanPhone.length < 10) {
       setErrorMsg('Please enter a valid 10-digit mobile number');
       return;
     }
+
+    const cleanAlt = clean10DigitPhone(altPhone);
 
     setSaving(true);
     try {
@@ -284,7 +287,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       const payload = {
         name: name.trim(),
         phone: cleanPhone,
-        altPhone: altPhone.trim() || undefined,
+        altPhone: cleanAlt || undefined,
         address: villageAddress,
         locality: village.trim(),
         city: 'Muzaffarpur',
@@ -322,7 +325,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         id: `local-${Date.now()}`,
         name: name.trim(),
         phone: cleanPhone,
-        altPhone: altPhone.trim() || undefined,
+        altPhone: cleanAlt || undefined,
         address: villageAddress,
         locality: village.trim(),
         city: 'Muzaffarpur',
@@ -352,14 +355,8 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         }),
       };
 
-      try {
-        const rawLocal = localStorage.getItem('manoj_local_customers');
-        const existingList = rawLocal ? JSON.parse(rawLocal) : [];
-        const updatedLocal = [newRecord, ...existingList.filter((c: any) => c.phone !== cleanPhone)];
-        localStorage.setItem('manoj_local_customers', JSON.stringify(updatedLocal));
-      } catch (localErr) {
-        console.warn('localStorage backup warning:', localErr);
-      }
+      // Immediately upsert into localStorage and broadcast update event to all open screens
+      upsertLocalCustomer(newRecord);
 
       // 2. Sync to server database in parallel
       try {
@@ -371,12 +368,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         const data = await res.json();
         if (data?.customer?.id) {
           newRecord.id = data.customer.id;
-          try {
-            const rawLocal = localStorage.getItem('manoj_local_customers');
-            const existingList = rawLocal ? JSON.parse(rawLocal) : [];
-            const updated = [newRecord, ...existingList.filter((c: any) => c.phone !== cleanPhone)];
-            localStorage.setItem('manoj_local_customers', JSON.stringify(updated));
-          } catch (_) {}
+          upsertLocalCustomer(newRecord);
         }
       } catch (netErr) {
         console.warn('Server sync will auto-retry on reload:', netErr);
@@ -400,7 +392,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         setMedSearch('');
         setSuccessMsg('');
         setSaving(false);
-      }, 900);
+      }, 500);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error communicating with server');
       setSaving(false);

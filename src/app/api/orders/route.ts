@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -41,11 +44,17 @@ export async function GET(request: Request) {
       };
     });
 
+    const headers = {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    };
+
     if (orderType && orderType !== 'all') {
-      return NextResponse.json(formattedOrders.filter((o) => o.orderType === orderType));
+      return NextResponse.json(formattedOrders.filter((o) => o.orderType === orderType), { headers });
     }
 
-    return NextResponse.json(formattedOrders);
+    return NextResponse.json(formattedOrders, { headers });
   } catch (error: any) {
     console.error('Error fetching orders:', error);
     return NextResponse.json({ error: 'Error fetching orders' }, { status: 500 });

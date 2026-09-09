@@ -320,6 +320,14 @@ export default function SettingsPage() {
     setSavedPharmacyProfile(false);
     try {
       localStorage.setItem('manoj_pharmacy_profile', JSON.stringify(pharmacyInfo));
+      localStorage.setItem('manoj_pharmacy_phone', pharmacyInfo.phone);
+      localStorage.setItem('manoj_pharmacy_name', pharmacyInfo.name);
+      localStorage.setItem('manoj_pharmacy_address', pharmacyInfo.address);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('manoj_settings_updated', {
+          detail: { pharmacy: pharmacyInfo }
+        }));
+      }
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -443,6 +451,11 @@ export default function SettingsPage() {
       localStorage.setItem('manoj_upi_id', cleanId);
       localStorage.setItem('manoj_upi_payee', cleanPayee);
       localStorage.setItem('manoj_upi_customized', 'true');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('manoj_settings_updated', {
+          detail: { upiId: cleanId, upiPayeeName: cleanPayee }
+        }));
+      }
     } catch {}
 
     try {
@@ -481,12 +494,20 @@ export default function SettingsPage() {
 
     try {
       localStorage.setItem('manoj_pharmacy_profile', JSON.stringify(pharmacyInfo));
+      localStorage.setItem('manoj_pharmacy_phone', pharmacyInfo.phone);
+      localStorage.setItem('manoj_pharmacy_name', pharmacyInfo.name);
+      localStorage.setItem('manoj_pharmacy_address', pharmacyInfo.address);
       if (upiId.trim()) {
         localStorage.setItem('manoj_upi_id', upiId.trim());
-        localStorage.setItem('manoj_upi_payee', upiPayeeName.trim());
+        localStorage.setItem('manoj_upi_payee', upiPayeeName.trim() || pharmacyInfo.name);
         if (upiId.trim() !== 'manojmedical@okhdfcbank') {
           localStorage.setItem('manoj_upi_customized', 'true');
         }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('manoj_settings_updated', {
+          detail: { pharmacy: pharmacyInfo, upiId: upiId.trim(), upiPayeeName: upiPayeeName.trim() }
+        }));
       }
     } catch {}
 

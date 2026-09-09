@@ -6,10 +6,16 @@ import Link from 'next/link';
 import {
   Bell, ShoppingBag, Clock, Calendar, CheckCircle2, Phone,
   MapPin, AlertTriangle, MessageCircle, ExternalLink, Milk, Pill,
-  Copy, X, Printer, FastForward, Layers, Send, Play, Pause
+  Copy, X, Printer, FastForward, Layers, Send, Play, Pause, UserPlus
 } from 'lucide-react';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import {
+  getLocalCustomers,
+  mergeRefillLists,
+  CUSTOMERS_UPDATED_EVENT,
+  CustomerRecord,
+} from '@/lib/customer-sync';
 
 interface RefillItem {
   id: string;
@@ -57,6 +63,7 @@ export default function RefillsPage() {
   const [whatsappModal, setWhatsappModal] = useState<WhatsAppModalData | null>(null);
   const [copied, setCopied] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [pendingOnboardPatients, setPendingOnboardPatients] = useState<CustomerRecord[]>([]);
 
   // Batch Automation Queue states
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -71,102 +78,29 @@ export default function RefillsPage() {
   const loadRefills = () => {
     setLoading(true);
 
-    // Helper to deduplicate refills by customer + medicine
-    const dedupeRefills = (items: RefillItem[]): RefillItem[] => {
-      const seen = new Set<string>();
-      return items.filter((item) => {
-        const cKey = item.customer?.phone || item.customer?.id || item.customer?.name || '';
-        const mKey = item.medicine?.name || item.medicine?.id || '';
-        const combined = `${cKey}::${mKey}`;
-        if (!combined || seen.has(combined)) return false;
-        seen.add(combined);
-        return true;
-      });
-    };
+    const localCustomers = getLocalCustomers();
+    const withoutRx = localCustomers.filter(c => !c.prescriptions || c.prescriptions.length === 0);
+    setPendingOnboardPatients(withoutRx);
 
-    fetch('/api/refills')
+    // 1. Immediately hydrate with local customer refills for offline-first instant render
+    const initialLocalRefills = mergeRefillLists([], localCustomers);
+    if (initialLocalRefills.length > 0) {
+      setRefillsList(initialLocalRefills as any);
+      setLoading(false);
+    }
+
+    // 2. Fetch authoritative refills from server and deeply merge with local customers
+    fetch(`/api/refills?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        let list: RefillItem[] = Array.isArray(data) ? data : [];
-        
-        // If server list is empty, generate refills preview from local storage safely without mutating server
-        if (list.length === 0) {
-          try {
-            const raw = localStorage.getItem('manoj_local_customers');
-            if (raw) {
-              const localList = JSON.parse(raw);
-              if (Array.isArray(localList) && localList.length > 0) {
-                const clientRefills: RefillItem[] = [];
-                localList.forEach((cust: any) => {
-                  (cust.prescriptions || []).forEach((p: any, idx: number) => {
-                    const isSyrup = isSyrupMedicine({
-                      name: p.medicine?.name,
-                      genericName: p.medicine?.genericName,
-                      category: p.medicine?.category,
-                      packagingType: p.medicine?.packagingType,
-                      unitType: p.unitType,
-                      customPackaging: p.customPackaging,
-                    });
-                    const refillDateStr = p.nextRefillDate || new Date().toISOString();
-                    const diffDays = isSyrup
-                      ? 1
-                      : Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                    let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = 'ok';
-                    if (diffDays <= 0) urgency = 'overdue';
-                    else if (diffDays <= 2) urgency = 'urgent';
-                    else if (diffDays <= 5) urgency = 'due_soon';
-                    else if (diffDays <= 10) urgency = 'ok';
-                    else urgency = 'future';
-
-                    clientRefills.push({
-                      id: p.id || `local-refill-${cust.id}-${idx}`,
-                      dailyDosage: Number(p.dailyDosage) || 1,
-                      lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
-                      lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
-                      nextRefillDate: refillDateStr,
-                      customPackaging: p.customPackaging,
-                      unitType: p.unitType || 'tablets',
-                      isSyrup,
-                      customer: {
-                        id: cust.id,
-                        name: cust.name,
-                        phone: cust.phone,
-                        address: cust.address,
-                        city: cust.city,
-                      },
-                      medicine: {
-                        id: p.medicine?.id || `med-${idx}`,
-                        name: p.medicine?.name || 'Medicine',
-                        genericName: p.medicine?.genericName || '',
-                        category: p.medicine?.category || 'Chronic',
-                        unitsPerPack: p.medicine?.unitsPerPack || 10,
-                        mrp: p.medicine?.mrp || 0,
-                      },
-                      refillCalc: {
-                        daysRemaining: diffDays,
-                        urgency,
-                        nextRefillDate: refillDateStr,
-                      },
-                    });
-                  });
-                });
-                list = clientRefills;
-              }
-            }
-          } catch (e) {
-            console.warn('Local refill parse error:', e);
-          }
-        }
-
-        const cleanList = dedupeRefills(list).sort(
-          (a, b) => a.refillCalc.daysRemaining - b.refillCalc.daysRemaining
-        );
-        setRefillsList(cleanList);
+        const rawServerList: RefillItem[] = Array.isArray(data) ? data : [];
+        const merged = mergeRefillLists(rawServerList as any, localCustomers);
+        setRefillsList(merged as any);
         setLoading(false);
       })
       .catch(() => setLoading(false));
 
-    fetch('/api/settings')
+    fetch(`/api/settings?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data) {
@@ -179,6 +113,20 @@ export default function RefillsPage() {
 
   useEffect(() => {
     loadRefills();
+
+    const handleSync = () => {
+      loadRefills();
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
   }, []);
 
   const filteredRefills = refillsList.filter((r) => {
@@ -592,6 +540,30 @@ export default function RefillsPage() {
           <div className="bg-teal-50 border border-teal-200 text-teal-800 p-4 rounded-xl flex items-center gap-2 text-sm font-medium animate-fadeIn">
             <CheckCircle2 className="w-5 h-5 text-teal-600 shrink-0" />
             {toastMsg}
+          </div>
+        )}
+
+        {pendingOnboardPatients.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold shrink-0">
+                <UserPlus size={18} />
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 text-sm">
+                  {pendingOnboardPatients.length} Patient(s) Onboarded Without Active Medicines
+                </h4>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  {pendingOnboardPatients.map((p) => `${p.name} (${p.phone})`).join(', ')}
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/prescriptions"
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5 shadow-2xs"
+            >
+              <Pill size={14} /> Add Medicines / Prescription
+            </Link>
           </div>
         )}
 

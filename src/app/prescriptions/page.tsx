@@ -7,6 +7,13 @@ import {
   ChevronDown, X, Edit3, PackageCheck, Milk, Sparkles, Filter
 } from 'lucide-react';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import {
+  getLocalCustomers,
+  saveLocalCustomers,
+  mergeCustomerLists,
+  clean10DigitPhone,
+  CUSTOMERS_UPDATED_EVENT,
+} from '@/lib/customer-sync';
 
 interface Medicine {
   id: string;
@@ -93,65 +100,68 @@ export default function PrescriptionsPage() {
   const medRef = useRef<HTMLDivElement>(null);
   const medSearchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const getPrescriptionsFromLocal = (): PrescriptionItem[] => {
+    const localCusts = getLocalCustomers();
+    const items: PrescriptionItem[] = [];
+    localCusts.forEach((cust) => {
+      (cust.prescriptions || []).forEach((p, idx) => {
+        items.push({
+          id: p.id || `local-rx-${cust.id}-${idx}`,
+          customerId: cust.id,
+          medicineId: p.medicine?.id || `med-${idx}`,
+          dailyDosage: Number(p.dailyDosage) || 1,
+          dosageSchedule: (p as any).dosageSchedule || null,
+          doctorName: p.doctorName || null,
+          lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
+          lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
+          nextRefillDate: p.nextRefillDate || new Date().toISOString(),
+          bufferDays: Number(p.bufferDays) || 3,
+          customPackaging: p.customPackaging,
+          unitType: p.unitType || 'tablets',
+          isActive: true,
+          customer: {
+            id: cust.id,
+            name: cust.name,
+            phone: cust.phone,
+            address: cust.address || '',
+            city: cust.city || 'Muzaffarpur',
+          },
+          medicine: {
+            id: p.medicine?.id || `med-${idx}`,
+            name: p.medicine?.name || 'Medicine',
+            genericName: p.medicine?.genericName || '',
+            category: p.medicine?.category || 'Chronic',
+            packagingType: p.medicine?.packagingType || 'strip',
+            unitsPerPack: p.medicine?.unitsPerPack || 10,
+            packsPerBox: (p.medicine as any)?.packsPerBox || 1,
+            mrp: p.medicine?.mrp || 0,
+          },
+        });
+      });
+    });
+    return items;
+  };
+
   const loadPrescriptions = () => {
+    const localRx = getPrescriptionsFromLocal();
+    if (localRx.length > 0) {
+      setPrescriptions((prev) => (prev.length === 0 ? localRx : prev));
+    }
+
     setLoading(true);
-    fetch('/api/prescriptions')
+    fetch(`/api/prescriptions?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        let list: PrescriptionItem[] = Array.isArray(data) ? data : [];
-        if (list.length === 0) {
-          try {
-            const raw = localStorage.getItem('manoj_local_customers');
-            if (raw) {
-              const localList = JSON.parse(raw);
-              if (Array.isArray(localList) && localList.length > 0) {
-                const clientList: PrescriptionItem[] = [];
-                localList.forEach((cust: any) => {
-                  (cust.prescriptions || []).forEach((p: any, idx: number) => {
-                    clientList.push({
-                      id: p.id || `local-rx-${cust.id}-${idx}`,
-                      customerId: cust.id,
-                      medicineId: p.medicine?.id || `med-${idx}`,
-                      dailyDosage: Number(p.dailyDosage) || 1,
-                      dosageSchedule: p.dosageSchedule || null,
-                      doctorName: p.doctorName || null,
-                      lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
-                      lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
-                      nextRefillDate: p.nextRefillDate || new Date().toISOString(),
-                      bufferDays: Number(p.bufferDays) || 3,
-                      customPackaging: p.customPackaging,
-                      unitType: p.unitType || 'tablets',
-                      isActive: true,
-                      customer: {
-                        id: cust.id,
-                        name: cust.name,
-                        phone: cust.phone,
-                        address: cust.address,
-                        city: cust.city,
-                      },
-                      medicine: {
-                        id: p.medicine?.id || `med-${idx}`,
-                        name: p.medicine?.name || 'Medicine',
-                        genericName: p.medicine?.genericName || '',
-                        category: p.medicine?.category || 'Chronic',
-                        packagingType: p.medicine?.packagingType || 'strip',
-                        unitsPerPack: p.medicine?.unitsPerPack || 10,
-                        packsPerBox: p.medicine?.packsPerBox || 1,
-                        mrp: p.medicine?.mrp || 0,
-                      },
-                    });
-                  });
-                });
-                list = clientList;
-              }
-            }
-          } catch (e) {}
-        }
+        const serverList: PrescriptionItem[] = Array.isArray(data) ? data : [];
+        const freshLocalRx = getPrescriptionsFromLocal();
 
-        // Deduplicate by customer + medicine
+        const combined = [...serverList, ...freshLocalRx];
         const seen = new Set<string>();
-        const cleanList = list.filter((item) => {
-          const key = `${item.customer?.phone || item.customer?.name}::${item.medicine?.name}`;
+        const cleanList = combined.filter((item) => {
+          const pPhone = clean10DigitPhone(item.customer?.phone || '');
+          const pName = (item.customer?.name || '').trim().toLowerCase();
+          const mName = (item.medicine?.name || '').trim().toLowerCase();
+          const key = `${pPhone || pName}::${mName}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -160,7 +170,27 @@ export default function PrescriptionsPage() {
         setPrescriptions(cleanList);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setPrescriptions(getPrescriptionsFromLocal());
+        setLoading(false);
+      });
+  };
+
+  const loadCustomersList = () => {
+    const local = getLocalCustomers();
+    if (local.length > 0) {
+      setCustomers((prev) => (prev.length === 0 ? (local as any) : prev));
+    }
+    fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        const rawSList = Array.isArray(data) ? data : (data?.data || []);
+        const merged = mergeCustomerLists(rawSList as any, getLocalCustomers(), false);
+        setCustomers(merged as any);
+      })
+      .catch(() => {
+        setCustomers(getLocalCustomers() as any);
+      });
   };
 
   const fetchMedicinesForDropdown = (query = '', cat = 'All') => {
@@ -179,25 +209,23 @@ export default function PrescriptionsPage() {
 
   useEffect(() => {
     loadPrescriptions();
-
-    fetch('/api/customers')
-      .then((res) => res.json())
-      .then((data) => {
-        let custList = Array.isArray(data) ? data : [];
-        if (custList.length === 0) {
-          try {
-            const raw = localStorage.getItem('manoj_local_customers');
-            if (raw) {
-              const localList = JSON.parse(raw);
-              if (Array.isArray(localList)) custList = localList;
-            }
-          } catch (e) {}
-        }
-        setCustomers(custList);
-      })
-      .catch(console.error);
-
+    loadCustomersList();
     fetchMedicinesForDropdown('', 'All');
+
+    const handleSync = () => {
+      loadPrescriptions();
+      loadCustomersList();
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
   }, []);
 
   // Close dropdowns on outside click
@@ -300,6 +328,41 @@ export default function PrescriptionsPage() {
       });
 
       if (res.ok) {
+        // Persist prescription to local customer record immediately
+        if (selectedCust && selectedMed) {
+          const localCusts = getLocalCustomers();
+          const target = localCusts.find(
+            (c) => c.id === customerId || clean10DigitPhone(c.phone) === clean10DigitPhone(selectedCust.phone)
+          );
+          if (target) {
+            const nextDateMs = Date.now() + Math.floor(Number(qty) / Math.max(1, Number(dosage))) * 86400000;
+            const newRx = {
+              id: `rx-${Date.now()}`,
+              dailyDosage: Number(dosage),
+              dosageSchedule: isInfantMilk ? `${dosage}g daily` : (scheduleStr || 'daily'),
+              doctorName: doctorName || null,
+              lastPurchaseDate: new Date(lastPurchase).toISOString(),
+              lastPurchaseQty: Number(qty),
+              nextRefillDate: new Date(nextDateMs).toISOString(),
+              customPackaging: overridePackaging ? customPackagingText : (selectedMed?.category === 'Infant Milk' ? '400g Tin' : `${selectedMed?.unitsPerPack} tabs/strip`),
+              unitType: customUnitType,
+              medicine: {
+                id: selectedMed.id,
+                name: selectedMed.name,
+                category: selectedMed.category,
+                genericName: selectedMed.genericName,
+                unitsPerPack: selectedMed.unitsPerPack,
+                mrp: selectedMed.mrp,
+              }
+            };
+            target.prescriptions = [
+              ...(target.prescriptions || []).filter((p) => p.medicine?.name !== selectedMed.name),
+              newRx as any,
+            ];
+            saveLocalCustomers(localCusts);
+          }
+        }
+
         setSuccessMsg('Prescription & Auto-Refill schedule configured successfully!');
         setTimeout(() => setSuccessMsg(''), 4000);
         setShowForm(false);

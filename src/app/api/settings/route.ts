@@ -52,7 +52,13 @@ export async function GET(request: Request) {
       upiPasscode: settings.upiPasscode || 'MANOJ2026',
     };
 
-    return NextResponse.json(defaults);
+    return NextResponse.json(defaults, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error: any) {
     console.error('Failed to get settings:', error);
     return NextResponse.json({ error: 'Failed to retrieve settings' }, { status: 500 });
@@ -143,6 +149,12 @@ async function handleSaveSettings(request: Request) {
       success: true,
       message: 'Settings saved successfully',
       settings: fresh,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
     });
   } catch (error: any) {
     console.error('Failed to update settings:', error);

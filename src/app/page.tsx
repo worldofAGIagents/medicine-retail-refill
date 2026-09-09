@@ -12,6 +12,12 @@ import {
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import {
+  getLocalCustomers,
+  saveLocalCustomers,
+  mergeCustomerLists,
+  CUSTOMERS_UPDATED_EVENT,
+} from '@/lib/customer-sync';
 
 interface PrescriptionItem {
   id: string;
@@ -85,40 +91,20 @@ export default function DashboardPage() {
 
   // Load live data from localStorage immediately, then reconcile with server
   const loadData = useCallback(() => {
-    let localList: CustomerRecord[] = [];
-    try {
-      const raw = localStorage.getItem('manoj_local_customers');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          localList = parsed.map(sanitizeCustomer);
-          setCustomers(localList);
-          setLoading(false);
-        }
-      }
-    } catch (e) {
-      console.warn('Dashboard local read error:', e);
+    const localList = getLocalCustomers();
+    if (localList.length > 0) {
+      setCustomers(localList as any);
+      setLoading(false);
     }
 
-    // Fetch server data
-    fetch('/api/customers')
+    // Fetch server data with cache busting
+    fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((serverData) => {
-        const rawSList: CustomerRecord[] = Array.isArray(serverData) ? serverData : [];
-        const sList = rawSList.map(sanitizeCustomer);
-        const serverPhones = new Set(sList.map((c) => c.phone.replace(/[^0-9]/g, '').slice(-10)));
-
-        // Merge: prefer server data for updated status, retain unpersisted local records
-        const merged = [...sList];
-        localList.forEach((lc) => {
-          const lPhone = lc.phone.replace(/[^0-9]/g, '').slice(-10);
-          if (!merged.some((m) => m.phone.replace(/[^0-9]/g, '').slice(-10) === lPhone)) {
-            merged.push(lc);
-          }
-        });
-
-        const cleanMerged = merged.map(sanitizeCustomer);
-        setCustomers(cleanMerged);
+        const rawSList = Array.isArray(serverData) ? serverData : [];
+        const cleanMerged = mergeCustomerLists(rawSList as any, getLocalCustomers(), true);
+        setCustomers(cleanMerged as any);
+        saveLocalCustomers(cleanMerged);
         setLoading(false);
       })
       .catch(() => {
@@ -128,6 +114,20 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadData();
+
+    const handleSync = () => {
+      loadData();
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
   }, [loadData]);
 
   // Compute all refill items with live urgency & days countdown

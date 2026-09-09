@@ -22,6 +22,13 @@ import {
   PharmacyDetails,
 } from '@/lib/billing-engine';
 import { detectMedicineCategory } from '@/lib/medicine-classifier';
+import {
+  getLocalCustomers,
+  mergeCustomerLists,
+  upsertLocalCustomer,
+  clean10DigitPhone,
+  CUSTOMERS_UPDATED_EVENT,
+} from '@/lib/customer-sync';
 
 interface Medicine {
   id: string;
@@ -86,15 +93,62 @@ export default function BillingPage() {
   const [cashTendered, setCashTendered] = useState<string>('');
 
   // Pharmacy Profile Settings (GST and DL are omitted from bills as per requirement)
-  const [pharmacy, setPharmacy] = useState<PharmacyDetails>({
-    name: 'Manoj Medical Hall',
-    address: 'Sarfuddinpur, Muzaffarpur, Bihar (843118)',
-    phone: '9431422744',
-    dlNumber: '',
-    gstin: '',
-    upiId: 'manojmedical@okhdfcbank',
-    upiPayeeName: 'Manoj Medical Hall',
-  });
+  const loadStoredPharmacyDetails = (): PharmacyDetails => {
+    const defaults: PharmacyDetails = {
+      name: 'Manoj Medical Hall',
+      address: 'Sarfuddinpur, Muzaffarpur, Bihar (843118)',
+      phone: '',
+      dlNumber: '',
+      gstin: '',
+      upiId: 'manojmedical@okhdfcbank',
+      upiPayeeName: 'Manoj Medical Hall',
+    };
+
+    if (typeof window === 'undefined') return defaults;
+
+    try {
+      const profileRaw = localStorage.getItem('manoj_pharmacy_profile');
+      if (profileRaw) {
+        const profile = JSON.parse(profileRaw);
+        if (profile.name) defaults.name = profile.name;
+        if (profile.address) defaults.address = profile.address;
+        if (profile.phone !== undefined && profile.phone !== '+91 98765 43210') {
+          defaults.phone = profile.phone;
+        }
+        if (profile.dlNumber !== undefined && profile.dlNumber !== 'DL-2024-001234') {
+          defaults.dlNumber = profile.dlNumber;
+        }
+        if (profile.gstin !== undefined && profile.gstin !== '07AAAAA0000A1Z5') {
+          defaults.gstin = profile.gstin;
+        }
+      }
+
+      const storedPhone = localStorage.getItem('manoj_pharmacy_phone');
+      if (storedPhone !== null && storedPhone !== '+91 98765 43210') {
+        defaults.phone = storedPhone;
+      }
+
+      const storedName = localStorage.getItem('manoj_pharmacy_name');
+      if (storedName) defaults.name = storedName;
+
+      const storedAddress = localStorage.getItem('manoj_pharmacy_address');
+      if (storedAddress) defaults.address = storedAddress;
+
+      const localUpi = localStorage.getItem('manoj_upi_id');
+      if (localUpi && localUpi.includes('@')) {
+        defaults.upiId = localUpi.trim();
+      }
+
+      const localPayee = localStorage.getItem('manoj_upi_payee');
+      if (localPayee) {
+        defaults.upiPayeeName = localPayee.trim();
+      }
+    } catch {}
+
+    return defaults;
+  };
+
+  const [pharmacy, setPharmacy] = useState<PharmacyDetails>(loadStoredPharmacyDetails);
 
   // Completed Bill Modal
   const [completedBill, setCompletedBill] = useState<BillSummary | null>(null);
@@ -106,41 +160,100 @@ export default function BillingPage() {
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const custSearchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load pharmacy settings & customers on mount
+  // Load pharmacy settings & customers on mount with real-time synchronization
   useEffect(() => {
-    // 1. Fetch settings
-    fetch('/api/settings')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && !data.error) {
-          setPharmacy((prev) => ({
-            ...prev,
-            name: data.pharmacyName || prev.name,
-            address: data.address || prev.address,
-            phone: data.phone || prev.phone,
-            dlNumber: data.dlNumber || prev.dlNumber,
-            gstin: data.gstin || prev.gstin,
-            upiId: data.upiId || prev.upiId,
-            upiPayeeName: data.upiPayeeName || data.pharmacyName || prev.upiPayeeName,
-          }));
-        }
-      })
-      .catch(() => {});
+    const syncSettings = () => {
+      // 1. Immediately hydrate from localStorage (offline-first & cross-page sync)
+      const local = loadStoredPharmacyDetails();
+      setPharmacy((prev) => ({
+        ...prev,
+        ...local,
+      }));
 
-    // 2. Fetch customers for lookup
-    fetch('/api/customers')
-      .then((res) => res.json())
-      .then((data) => {
-        let list = Array.isArray(data) ? data : (data?.data || []);
-        if (list.length === 0) {
-          try {
-            const raw = localStorage.getItem('manoj_local_customers');
-            if (raw) list = JSON.parse(raw);
-          } catch (_) {}
-        }
-        setExistingCustomers(list);
-      })
-      .catch(() => {});
+      // 2. Fetch fresh settings from server with cache-busting
+      fetch(`/api/settings?t=${Date.now()}`, { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && !data.error) {
+            setPharmacy((prev) => {
+              const hasLocalUpi = typeof window !== 'undefined' && localStorage.getItem('manoj_upi_customized') === 'true';
+              const localUpi = typeof window !== 'undefined' ? localStorage.getItem('manoj_upi_id') : null;
+              const effectiveUpi = (hasLocalUpi && localUpi && localUpi.includes('@'))
+                ? localUpi.trim()
+                : (data.upiId || prev.upiId);
+
+              const hasLocalPhone = typeof window !== 'undefined' && (
+                localStorage.getItem('manoj_pharmacy_phone') !== null ||
+                localStorage.getItem('manoj_pharmacy_profile') !== null
+              );
+              let localPhone: string | undefined = undefined;
+              if (typeof window !== 'undefined') {
+                const direct = localStorage.getItem('manoj_pharmacy_phone');
+                if (direct !== null) {
+                  localPhone = direct;
+                } else {
+                  const prof = localStorage.getItem('manoj_pharmacy_profile');
+                  if (prof) {
+                    try { localPhone = JSON.parse(prof).phone; } catch {}
+                  }
+                }
+              }
+
+              const effectivePhone = (hasLocalPhone && localPhone !== undefined && localPhone !== '+91 98765 43210')
+                ? localPhone
+                : (data.phone !== undefined && data.phone !== '+91 98765 43210' ? data.phone : prev.phone);
+
+              return {
+                ...prev,
+                name: data.pharmacyName || prev.name,
+                address: data.address || prev.address,
+                phone: effectivePhone,
+                dlNumber: data.dlNumber !== undefined ? data.dlNumber : prev.dlNumber,
+                gstin: data.gstin !== undefined ? data.gstin : prev.gstin,
+                upiId: effectiveUpi,
+                upiPayeeName: data.upiPayeeName || data.pharmacyName || prev.upiPayeeName,
+              };
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    syncSettings();
+
+    // Listen for settings changes dispatched from Settings tab or across browser windows
+    window.addEventListener('manoj_settings_updated', syncSettings);
+    window.addEventListener('storage', syncSettings);
+    window.addEventListener('focus', syncSettings);
+
+    // 2. Fetch customers for lookup with universal merge & offline-first persistence
+    const syncCustomers = () => {
+      const local = getLocalCustomers();
+      if (local.length > 0) {
+        setExistingCustomers((prev) => (prev.length === 0 ? (local as any) : prev));
+      }
+      fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          const rawSList = Array.isArray(data) ? data : (data?.data || []);
+          const merged = mergeCustomerLists(rawSList as any, getLocalCustomers(), false);
+          setExistingCustomers(merged as any);
+        })
+        .catch(() => {
+          setExistingCustomers(getLocalCustomers() as any);
+        });
+    };
+
+    syncCustomers();
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, syncCustomers);
+
+    return () => {
+      window.removeEventListener('manoj_settings_updated', syncSettings);
+      window.removeEventListener('storage', syncSettings);
+      window.removeEventListener('focus', syncSettings);
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, syncCustomers);
+    };
   }, []);
 
   // Close dropdowns on outside click
@@ -394,6 +507,38 @@ export default function BillingPage() {
         };
         localStorage.setItem('manoj_local_orders', JSON.stringify([localRecord, ...existingList]));
       } catch (_) {}
+
+      // Auto-register named customer into local customers and database if 10-digit phone provided
+      const cleanPhone = clean10DigitPhone(customerPhone);
+      if (customerName.trim() && cleanPhone.length === 10) {
+        try {
+          const autoCust = {
+            id: selectedCustomerId || `cust-${Date.now()}`,
+            name: customerName.trim(),
+            phone: cleanPhone,
+            locality: customerVillage.trim() || 'Sarfuudinpur',
+            address: customerVillage.trim() || 'Sarfuudinpur',
+            city: 'Muzaffarpur',
+            primaryCondition: 'Blood Pressure',
+            prescriptions: [],
+            createdAt: new Date().toISOString(),
+          };
+          upsertLocalCustomer(autoCust as any);
+
+          // Background push to database
+          fetch('/api/customers/onboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: customerName.trim(),
+              phone: cleanPhone,
+              village: customerVillage.trim() || 'Sarfuudinpur',
+              condition: 'Blood Pressure',
+              prescriptions: [],
+            }),
+          }).catch(() => {});
+        } catch (_) {}
+      }
 
       // 2. Save to database via API
       try {

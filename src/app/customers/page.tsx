@@ -4,6 +4,13 @@ import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Phone, MapPin, Pill, X, Check, Eye, UserPlus, Heart, Sparkles, Calendar, Clock } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
+import {
+  getLocalCustomers,
+  saveLocalCustomers,
+  mergeCustomerLists,
+  CUSTOMERS_UPDATED_EVENT,
+  clean10DigitPhone,
+} from '@/lib/customer-sync';
 
 interface PrescriptionWithMedicine {
   id: string;
@@ -58,84 +65,21 @@ export default function CustomersPage() {
   const [category, setCategory] = useState('All');
 
   const loadCustomers = () => {
-    // 1. Instantly load from local storage & sanitize duplicates in-place
-    let localList: Customer[] = [];
-    try {
-      const raw = localStorage.getItem('manoj_local_customers');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          localList = parsed.map(sanitizeCustomer);
-          setCustomers(localList);
-          setLoading(false);
-          // Auto-clean localStorage so duplicates like Alok's 4 prescriptions collapse to 2
-          localStorage.setItem('manoj_local_customers', JSON.stringify(localList));
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read local customers:', e);
+    // 1. Instantly load from local storage
+    const localList = getLocalCustomers() as Customer[];
+    if (localList.length > 0) {
+      setCustomers(localList);
+      setLoading(false);
     }
 
-    // 2. Fetch authoritative records from server
-    fetch('/api/customers')
+    // 2. Fetch authoritative records from server with cache-busting
+    fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((serverData) => {
         const rawSList: Customer[] = Array.isArray(serverData) ? serverData : [];
-        const sList = rawSList.map(sanitizeCustomer);
-        const serverPhones = new Set(sList.map((c) => c.phone.replace(/[^0-9]/g, '').slice(-10)));
-
-        // Detect if any local customer is missing on the server (e.g. fresh lambda container)
-        const missingOnServer = localList.filter((lc) => {
-          const p = lc.phone.replace(/[^0-9]/g, '').slice(-10);
-          return !serverPhones.has(p);
-        });
-
-        if (missingOnServer.length > 0) {
-          // Auto-reseed server with deduplicated medicines only
-          missingOnServer.forEach((mc) => {
-            const cleanMeds = mc.prescriptions?.map((p) => ({
-              medicineId: (p.medicine as any)?.id,
-              dailyDosage: p.dailyDosage,
-              lastPurchaseQty: p.lastPurchaseQty || 30,
-              customPackaging: p.customPackaging,
-              unitType: 'tablets',
-            })) || [];
-
-            fetch('/api/customers/onboard', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: mc.name,
-                phone: mc.phone,
-                altPhone: mc.altPhone,
-                address: mc.address,
-                locality: mc.locality,
-                city: mc.city || 'Muzaffarpur',
-                primaryCondition: mc.primaryCondition,
-                medicines: cleanMeds,
-              }),
-            }).catch((err) => console.warn('Reseed warning for', mc.name, err));
-          });
-        }
-
-        // Merge server list & local list by clean 10-digit phone
-        const merged = [...sList];
-        localList.forEach((lc) => {
-          const lPhone = lc.phone.replace(/[^0-9]/g, '').slice(-10);
-          if (!merged.some((m) => m.phone.replace(/[^0-9]/g, '').slice(-10) === lPhone)) {
-            merged.push(lc);
-          }
-        });
-
-        const cleanMerged = merged.map(sanitizeCustomer);
+        const cleanMerged = mergeCustomerLists(rawSList as any, localList as any, true) as Customer[];
         setCustomers(cleanMerged);
-        if (cleanMerged.length > 0) {
-          try {
-            localStorage.setItem('manoj_local_customers', JSON.stringify(cleanMerged));
-          } catch (e) {
-            console.warn('Failed updating localStorage cache:', e);
-          }
-        }
+        saveLocalCustomers(cleanMerged as any);
         setLoading(false);
       })
       .catch(() => {
@@ -145,6 +89,20 @@ export default function CustomersPage() {
 
   useEffect(() => {
     loadCustomers();
+
+    const handleSync = () => {
+      loadCustomers();
+    };
+
+    window.addEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      window.removeEventListener(CUSTOMERS_UPDATED_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
   }, []);
 
   const categories = ['All', 'Blood Pressure', 'Diabetes', 'Thyroid', 'Heart', 'Infant Milk', 'Cholesterol', 'Gastric'];

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { calculateRefill } from '@/lib/refill-engine';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   const prescriptions = await db.prescription.findMany({
     include: { customer: true, medicine: true },
@@ -27,7 +30,13 @@ export async function GET() {
     return { ...p, refillStatus };
   });
 
-  return NextResponse.json(formatted);
+  return NextResponse.json(formatted, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  });
 }
 
 export async function POST(request: Request) {
