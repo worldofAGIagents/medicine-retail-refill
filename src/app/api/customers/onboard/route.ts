@@ -111,7 +111,9 @@ export async function POST(request: Request) {
       if (!med) continue;
       item.medicineId = med.id;
 
-      // DYNAMIC LEARNING & CUSTOM OVERRIDES: Update medicine MRP, packaging & chronic category
+      // DYNAMIC LEARNING & OVERRIDES: Update medicine MRP, packaging & chronic category
+      // MRP overwrites are intentional — when manufacturer revises pricing, the pharmacist
+      // updates it here and it should persist globally for all future billing.
       const medUpdates: any = {};
       if (item.customMrp && Number(item.customMrp) > 0) {
         medUpdates.mrp = Number(item.customMrp);

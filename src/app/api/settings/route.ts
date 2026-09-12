@@ -52,7 +52,16 @@ export async function GET(request: Request) {
       upiPasscode: settings.upiPasscode || 'MANOJ2026',
     };
 
-    return NextResponse.json(defaults, {
+    // Strip sensitive fields from public response
+    const SENSITIVE_KEYS = ['upiPasscode', 'margApiUrl', 'margCompanyCode', 'margBranchCode', 'margSyncInterval'];
+    const publicDefaults: Record<string, any> = {};
+    for (const [key, value] of Object.entries(defaults)) {
+      if (!SENSITIVE_KEYS.includes(key)) {
+        publicDefaults[key] = value;
+      }
+    }
+
+    return NextResponse.json(publicDefaults, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',

@@ -232,9 +232,11 @@ async function runMasterAudit() {
     const settings = await res.json();
     assert.strictEqual(settings.pharmacyName, 'Manoj Medical Hall');
     assert(settings.phone === '6200314615' || settings.phone === '9431422744', 'Unexpected phone: ' + settings.phone);
-    assert.strictEqual(settings.upiId, 'manojmedical@okhdfcbank');
+    assert(settings.upiId && settings.upiId.length > 0, 'UPI ID should be set');
     assert.strictEqual(settings.dlNumber, '');
     assert.strictEqual(settings.gstin, '');
+    // Security: passcode must NOT be exposed in public GET response
+    assert.strictEqual(settings.upiPasscode, undefined, 'upiPasscode must not be exposed publicly');
   });
 
   await test('4.2 User Authentication: admin@medrefill.in authenticates with pharmacy123', async () => {

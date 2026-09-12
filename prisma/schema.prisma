@@ -27,6 +27,9 @@ model Medicine {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   prescriptions   Prescription[]
+
+  @@index([name])
+  @@index([category, name])
 }
 
 model Customer {
@@ -45,6 +48,9 @@ model Customer {
   updatedAt       DateTime @updatedAt
   prescriptions   Prescription[]
   orders          Order[]
+
+  @@index([name])
+  @@index([locality])
 }
 
 model Prescription {
@@ -67,6 +73,9 @@ model Prescription {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   refillLogs      RefillLog[]
+
+  @@index([customerId])
+  @@index([isActive, nextRefillDate])
 }
 
 model RefillLog {
@@ -97,6 +106,9 @@ model Order {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   items           OrderItem[]
+
+  @@index([customerId])
+  @@index([status, createdAt])
 }
 
 model OrderItem {
