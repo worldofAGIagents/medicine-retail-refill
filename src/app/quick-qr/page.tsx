@@ -6,9 +6,10 @@ import { QRCodeSVG } from 'qrcode.react';
 import {
   QrCode, IndianRupee, Copy, Check, Share2, Maximize2, Minimize2,
   Printer, ArrowRight, ShieldCheck, Sparkles, Smartphone, Download,
-  Settings, CheckCircle2, RefreshCw
+  Settings, CheckCircle2, RefreshCw, MessageCircle, Loader2
 } from 'lucide-react';
 import Link from 'next/link';
+import { downloadPaymentQrImage, sharePaymentQrViaWhatsApp } from '@/lib/invoice-generator';
 
 export default function QuickQrPage() {
   const [amount, setAmount] = useState<string>('150');
@@ -20,46 +21,33 @@ export default function QuickQrPage() {
   const [copied, setCopied] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isGeneratingQrImage, setIsGeneratingQrImage] = useState(false);
 
   const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let localId: string | null = null;
-    let localPayee: string | null = null;
-    let localCustomized = false;
-
+    // Database is the single source of truth for UPI settings.
+    // localStorage is only used as a fast cache for initial render.
     try {
       if (typeof window !== 'undefined') {
-        localId = localStorage.getItem('manoj_upi_id');
-        localPayee = localStorage.getItem('manoj_upi_payee');
-        localCustomized = localStorage.getItem('manoj_upi_customized') === 'true';
+        const cachedId = localStorage.getItem('manoj_upi_id');
+        const cachedPayee = localStorage.getItem('manoj_upi_payee');
+        if (cachedId) setUpiId(cachedId);
+        if (cachedPayee) setPayeeName(cachedPayee);
       }
-      if (localId) setUpiId(localId);
-      if (localPayee) setPayeeName(localPayee);
     } catch {}
 
     fetch('/api/settings')
       .then((res) => res.json())
       .then((data) => {
-        if (localCustomized && localId) {
-          setUpiId(localId);
-          if (localPayee) setPayeeName(localPayee);
-          if (data?.upiId && data.upiId !== localId) {
-            fetch('/api/settings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                upiId: localId,
-                upiPayeeName: localPayee || 'Manoj Medical Hall',
-                upiCustomized: 'true',
-              }),
-            }).catch(() => {});
-          }
-        } else if (data?.upiId) {
+        if (data?.upiId) {
           setUpiId(data.upiId);
-          if (data?.upiPayeeName || data?.pharmacyName) {
-            setPayeeName(data.upiPayeeName || data.pharmacyName);
-          }
+          try { localStorage.setItem('manoj_upi_id', data.upiId); } catch {}
+        }
+        if (data?.upiPayeeName || data?.pharmacyName) {
+          const name = data.upiPayeeName || data.pharmacyName;
+          setPayeeName(name);
+          try { localStorage.setItem('manoj_upi_payee', name); } catch {}
         }
         setLoading(false);
       })
@@ -97,6 +85,43 @@ export default function QuickQrPage() {
       ? `https://wa.me/${recipient}?text=${encodeURIComponent(msg)}`
       : `https://wa.me/?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleShareQrImage = async () => {
+    setIsGeneratingQrImage(true);
+    try {
+      await sharePaymentQrViaWhatsApp({
+        amount: numAmount,
+        note: note || 'Medicine Bill',
+        payeeName,
+        upiId: cleanUpiId,
+        customerName: customerName || undefined,
+        customerPhone: customerPhone || undefined,
+      });
+    } catch (e) {
+      console.error('Error sharing QR image:', e);
+      handleShareWhatsApp();
+    } finally {
+      setIsGeneratingQrImage(false);
+    }
+  };
+
+  const handleDownloadQrImage = async () => {
+    setIsGeneratingQrImage(true);
+    try {
+      await downloadPaymentQrImage({
+        amount: numAmount,
+        note: note || 'Medicine Bill',
+        payeeName,
+        upiId: cleanUpiId,
+        customerName: customerName || undefined,
+        customerPhone: customerPhone || undefined,
+      });
+    } catch (e) {
+      console.error('Error downloading QR image:', e);
+    } finally {
+      setIsGeneratingQrImage(false);
+    }
   };
 
   const handlePrint = () => {
@@ -377,38 +402,74 @@ export default function QuickQrPage() {
 
               {/* Doorstep Action Buttons */}
               <div className="w-full space-y-2 pt-1">
+                {/* Primary: WhatsApp QR Image */}
                 <button
-                  onClick={() => setFullScreen(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white font-bold text-sm shadow-md transition-all"
+                  type="button"
+                  onClick={handleShareQrImage}
+                  disabled={numAmount <= 0 || isGeneratingQrImage}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold text-sm shadow-md transition-all disabled:opacity-40 cursor-pointer"
                 >
-                  <Maximize2 className="w-4 h-4" />
-                  <span>Doorstep Full-Screen Scan</span>
+                  {isGeneratingQrImage ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Generating QR Image...</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Share QR on WhatsApp (Image)</span>
+                    </>
+                  )}
                 </button>
 
                 <div className="grid grid-cols-2 gap-2">
                   <button
+                    type="button"
+                    onClick={() => setFullScreen(true)}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-sm transition-all cursor-pointer"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>Full-Screen Scan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadQrImage}
+                    disabled={numAmount <= 0 || isGeneratingQrImage}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs border border-gray-200 transition-all disabled:opacity-40 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-gray-600" />
+                    <span>Save QR Image</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
                     onClick={handleShareWhatsApp}
                     disabled={numAmount <= 0}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-40"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold text-xs border border-gray-200 transition-all disabled:opacity-40 cursor-pointer"
+                    title="Send plain text UPI payment link"
                   >
-                    <Share2 className="w-3.5 h-3.5" />
+                    <Share2 className="w-3.5 h-3.5 text-gray-500" />
                     <span>WhatsApp Link</span>
                   </button>
 
                   <button
+                    type="button"
                     onClick={handleCopyLink}
                     disabled={numAmount <= 0}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs transition-all disabled:opacity-40 border border-gray-200"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold text-xs border border-gray-200 transition-all disabled:opacity-40 cursor-pointer"
                   >
                     {copied ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-green-600" />
-                        <span className="text-green-700">Link Copied</span>
+                        <span className="text-green-700 font-bold">Copied!</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5 text-gray-600" />
-                        <span>Copy UPI Link</span>
+                        <Copy className="w-3.5 h-3.5 text-gray-500" />
+                        <span>Copy Link</span>
                       </>
                     )}
                   </button>

@@ -2,7 +2,8 @@
 
 import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, Phone, MapPin, Pill, X, Check, Eye, UserPlus, Heart, Sparkles, Calendar, Clock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Search, Plus, Phone, MapPin, Pill, X, Check, Eye, UserPlus, Heart, Sparkles, Calendar, Clock, Edit } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import {
   getLocalCustomers,
@@ -57,6 +58,7 @@ function sanitizeCustomer(c: Customer): Customer {
 }
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>(() => {
     if (typeof window !== 'undefined') {
       return getLocalCustomers() as Customer[];
@@ -88,7 +90,8 @@ export default function CustomersPage() {
       const serverData = await res.json();
       const rawSList: Customer[] = Array.isArray(serverData) ? serverData : [];
       const cleanMerged = mergeCustomerLists(rawSList as any, localList as any, true) as Customer[];
-      setCustomers(cleanMerged);
+      const sanitized = cleanMerged.map(sanitizeCustomer);
+      setCustomers(sanitized);
       // Suppress broadcast so server sync does not re-trigger an event loop!
       saveLocalCustomers(cleanMerged as any, { source: 'server_sync', broadcast: false });
     } catch (e) {
@@ -275,7 +278,7 @@ export default function CustomersPage() {
                     const villageName = c.locality || (c.address ? c.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
 
                     return (
-                      <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
+                      <tr key={c.id} onClick={() => router.push(`/customers/${c.id}`)} className="hover:bg-gray-50/60 transition-colors cursor-pointer">
                         {/* 1. Patient Name + Condition Pill */}
                         <td className="py-3.5 px-6">
                           <div className="flex items-center gap-3">
@@ -384,10 +387,16 @@ export default function CustomersPage() {
                         {/* 6. Actions */}
                         <td className="py-3.5 px-4 text-right">
                           <button
-                            onClick={() => setViewCustomer(c)}
+                            onClick={(e) => { e.stopPropagation(); setViewCustomer(c); }}
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer border border-teal-100"
                           >
                             <Eye className="w-3.5 h-3.5" /> Details
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); router.push(`/customers/${c.id}`); }}
+                            className="inline-flex ml-2 items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer border border-indigo-100"
+                          >
+                            <Edit className="w-3.5 h-3.5" /> Edit
                           </button>
                         </td>
                       </tr>

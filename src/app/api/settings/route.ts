@@ -106,7 +106,7 @@ async function handleSaveSettings(request: Request) {
         if (!providedPasscode || String(providedPasscode).trim() !== storedPasscode) {
           return NextResponse.json(
             {
-              error: 'Unauthorized: Valid security passcode required to update UPI ID (passcode: MANOJ2026)',
+              error: 'Unauthorized: Valid security passcode required to update UPI ID',
               code: 'UPI_PASSCODE_REQUIRED',
             },
             { status: 403 }

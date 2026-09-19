@@ -303,11 +303,11 @@ function AuthForm() {
         </form>
       )}
 
-      {/* Quick Autofill Buttons for Saved Accounts */}
+      {/* Quick Autofill Buttons — email only, no passwords shown */}
       <div className="pt-4 border-t border-gray-100 space-y-2">
         <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
           <ShieldCheck size={13} className="text-teal-600" />
-          Quick 1-Click Login:
+          Quick Login:
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -317,7 +317,7 @@ function AuthForm() {
             className="p-2.5 bg-teal-50/70 hover:bg-teal-100/80 border border-teal-200 rounded-xl text-left transition-colors"
           >
             <p className="text-xs font-bold text-teal-900 truncate">worldofagent@gmail.com</p>
-            <p className="text-[10px] text-teal-700 font-mono">Password: pharmacy123</p>
+            <p className="text-[10px] text-teal-700">Owner Account</p>
           </button>
 
           <button
@@ -326,7 +326,7 @@ function AuthForm() {
             className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-colors"
           >
             <p className="text-xs font-bold text-slate-800 truncate">admin@medrefill.in</p>
-            <p className="text-[10px] text-slate-600 font-mono">Password: pharmacy123</p>
+            <p className="text-[10px] text-slate-600">Pharmacist Account</p>
           </button>
         </div>
       </div>

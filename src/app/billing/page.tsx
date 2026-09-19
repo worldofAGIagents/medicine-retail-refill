@@ -6,7 +6,8 @@ import {
   Receipt, Search, Plus, Minus, Trash2, CheckCircle2, AlertCircle,
   Printer, MessageCircle, QrCode, IndianRupee, Banknote, Smartphone,
   User, RefreshCw, X, ArrowRight, ShieldCheck, Tag, Percent, Sparkles,
-  Layers, Check, ExternalLink, Calendar, MapPin, Stethoscope
+  Layers, Check, ExternalLink, Calendar, MapPin, Stethoscope,
+  Download, Share2, Loader2
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -22,6 +23,12 @@ import {
   generateUpiPaymentLink,
   PharmacyDetails,
 } from '@/lib/billing-engine';
+import {
+  downloadInvoiceImage,
+  shareInvoiceViaWhatsApp,
+  downloadPaymentQrImage,
+  sharePaymentQrViaWhatsApp,
+} from '@/lib/invoice-generator';
 import { detectMedicineCategory } from '@/lib/medicine-classifier';
 import {
   getLocalCustomers,
@@ -570,14 +577,62 @@ export default function BillingPage() {
     handleSetWalkIn();
   };
 
-  // WhatsApp share
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+
+  // WhatsApp share text fallback
   const handleShareWhatsApp = (bill: BillSummary) => {
     const text = generateWhatsAppBillText(bill, pharmacy);
     const phone = bill.customerPhone ? bill.customerPhone.replace(/[^0-9]/g, '') : '';
-    const url = phone.length >= 10
-      ? `https://api.whatsapp.com/send?phone=91${phone}&text=${encodeURIComponent(text)}`
+    const cleanPhone = phone.length > 10 && phone.startsWith('91') ? phone : (phone.length === 10 ? '91' + phone : phone);
+    const url = cleanPhone.length >= 10
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
       : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
+  };
+
+  // WhatsApp Share Image Invoice (with embedded QR code)
+  const handleShareWhatsAppImage = async (bill: BillSummary) => {
+    setIsGeneratingImage(true);
+    try {
+      await shareInvoiceViaWhatsApp(bill, pharmacy);
+    } catch (err) {
+      console.error('Error sharing invoice image:', err);
+      handleShareWhatsApp(bill);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  // Download Invoice PNG Image
+  const handleDownloadInvoice = async (bill: BillSummary) => {
+    setIsGeneratingImage(true);
+    try {
+      await downloadInvoiceImage(bill, pharmacy);
+    } catch (err) {
+      console.error('Error downloading invoice image:', err);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  // Share Standalone Payment QR Image
+  const handleShareQrImage = async (bill: BillSummary) => {
+    setIsGeneratingImage(true);
+    try {
+      await sharePaymentQrViaWhatsApp({
+        amount: bill.netPayable,
+        note: `Bill ${bill.invoiceNo}`,
+        payeeName: pharmacy.upiPayeeName || pharmacy.name,
+        upiId: pharmacy.upiId || 'manojmedical@okhdfcbank',
+        pharmacyPhone: pharmacy.phone,
+        customerName: bill.customerName,
+        customerPhone: bill.customerPhone,
+      });
+    } catch (err) {
+      console.error('Error sharing QR image:', err);
+    } finally {
+      setIsGeneratingImage(false);
+    }
   };
 
   // Native Print
@@ -1514,28 +1569,72 @@ export default function BillingPage() {
               </div>
 
               {/* Action Buttons Toolbar */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 print:hidden">
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Printer size={14} /> Print Receipt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleShareWhatsApp(completedBill)}
-                  className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <MessageCircle size={14} /> Send WhatsApp
-                </button>
-                <button
-                  type="button"
-                  onClick={handleStartNewBill}
-                  className="col-span-2 sm:col-span-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Plus size={14} /> Next Bill
-                </button>
+              <div className="space-y-2 print:hidden">
+                {/* Primary Sharing Actions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isGeneratingImage}
+                    onClick={() => handleShareWhatsAppImage(completedBill)}
+                    className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {isGeneratingImage ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" /> Generating Image...
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle size={15} /> WhatsApp Image Bill (with QR)
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isGeneratingImage}
+                    onClick={() => handleShareQrImage(completedBill)}
+                    className="w-full py-2.5 px-3 bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    <QrCode size={15} /> Send Payment QR Image
+                  </button>
+                </div>
+
+                {/* Secondary Actions */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="px-2.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Printer size={13} /> Print Bill
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isGeneratingImage}
+                    onClick={() => handleDownloadInvoice(completedBill)}
+                    className="px-2.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    <Download size={13} /> Save Image
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareWhatsApp(completedBill)}
+                    className="px-2.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    title="Send standard text summary"
+                  >
+                    <Share2 size={13} /> Text Bill
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleStartNewBill}
+                    className="px-2.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Plus size={13} /> Next Bill
+                  </button>
+                </div>
               </div>
 
               {/* ---------------- THERMAL 80MM / A4 RECEIPT PREVIEW ---------------- */}

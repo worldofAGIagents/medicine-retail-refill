@@ -59,23 +59,18 @@ export default function OrdersPage() {
       .then((res) => res.json())
       .then((data) => {
         let list = Array.isArray(data) ? data : [];
-        if (list.length === 0) {
-          try {
-            const raw = localStorage.getItem('manoj_local_orders');
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
-            }
-          } catch (e) {}
-        } else {
+        if (list.length > 0) {
+          // Cache latest server data for offline fallback
           try {
             localStorage.setItem('manoj_local_orders', JSON.stringify(list));
           } catch (e) {}
         }
+        // If API returned empty, show empty (don't load stale local data as "real")
         setOrders(list);
         setLoading(false);
       })
       .catch(() => {
+        // Network error: show cached data as read-only fallback
         try {
           const raw = localStorage.getItem('manoj_local_orders');
           if (raw) {
