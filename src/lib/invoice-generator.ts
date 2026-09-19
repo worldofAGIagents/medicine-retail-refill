@@ -13,10 +13,10 @@ import { BillSummary, PharmacyDetails, generateUpiPaymentLink } from './billing-
  */
 export function generateInvoiceHTML(
   bill: BillSummary,
-  pharmacy: PharmacyDetails
+  pharmacy: PharmacyDetails,
+  qrDataUrl?: string
 ): string {
-  const upiLink = generateUpiPaymentLink(bill.netPayable, bill.invoiceNo, pharmacy);
-  const cleanUpi = (pharmacy.upiId || '').trim();
+  const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
 
   const itemRows = bill.items
     .map(
@@ -105,12 +105,18 @@ export function generateInvoiceHTML(
       </div>
     </div>
 
-    <!-- QR Code Placeholder -->
+    <!-- QR Code Block (Embedded as high-res Image) -->
     ${cleanUpi ? `
-    <div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px dashed #d1d5db;">
-      <p style="font-size:10px;color:#6b7280;margin:0 0 6px 0;">Scan to pay via UPI</p>
-      <div id="invoice-qr-placeholder" data-upi-link="${upiLink}" style="display:inline-block;padding:8px;background:white;border:1px solid #e5e7eb;border-radius:4px;width:120px;height:120px;"></div>
-      <p style="font-size:10px;color:#374151;margin:6px 0 0 0;font-family:monospace;">${cleanUpi}</p>
+    <div style="text-align:center;margin-top:14px;padding-top:12px;border-top:1px dashed #d1d5db;">
+      <p style="font-size:11px;color:#4b5563;margin:0 0 6px 0;font-weight:600;">Scan to Pay via UPI</p>
+      <div style="display:inline-block;padding:8px;background:#ffffff;border:2px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        ${qrDataUrl ? `
+          <img src="${qrDataUrl}" width="140" height="140" alt="UPI QR Code" style="display:block;width:140px;height:140px;margin:0 auto;" />
+        ` : `
+          <div style="width:140px;height:140px;background:#f8fafc;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;">QR Code</div>
+        `}
+      </div>
+      <p style="font-size:11px;color:#0d9488;margin:6px 0 0 0;font-family:monospace;font-weight:700;">${cleanUpi}</p>
     </div>
     ` : ''}
 
@@ -124,49 +130,54 @@ export function generateInvoiceHTML(
 
 /**
  * Renders the invoice to a canvas element and returns it as a Blob (PNG).
- * Uses html2canvas-style rendering via an offscreen iframe.
+ * Uses html2canvas-style rendering with pre-rendered base64 QR image.
  */
 export async function generateInvoiceImage(
   bill: BillSummary,
   pharmacy: PharmacyDetails
 ): Promise<Blob | null> {
-  // Dynamic import to avoid SSR issues
-  const html = generateInvoiceHTML(bill, pharmacy);
+  const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
+  const upiLink = generateUpiPaymentLink(bill.netPayable, bill.invoiceNo, pharmacy);
 
-  // Create offscreen container
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  container.style.top = '0';
-  container.style.zIndex = '-9999';
-  container.innerHTML = html;
-  document.body.appendChild(container);
-
-  // Render QR code into the placeholder using canvas
-  const qrPlaceholder = container.querySelector('#invoice-qr-placeholder') as HTMLElement;
-  if (qrPlaceholder) {
-    const upiLink = qrPlaceholder.getAttribute('data-upi-link') || '';
-    if (upiLink) {
-      try {
-        // Use QRCode library to draw QR into a canvas
-        const { default: QRCode } = await import('qrcode');
-        const qrCanvas = document.createElement('canvas');
-        qrCanvas.width = 120;
-        qrCanvas.height = 120;
-        await QRCode.toCanvas(qrCanvas, upiLink, {
-          width: 120,
-          margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-        });
-        qrPlaceholder.innerHTML = '';
-        qrPlaceholder.appendChild(qrCanvas);
-      } catch (e) {
-        console.warn('QR code generation failed:', e);
-      }
+  // 1. Generate QR code directly as a Base64 PNG Data URL
+  let qrDataUrl = '';
+  if (cleanUpi) {
+    try {
+      const { default: QRCode } = await import('qrcode');
+      qrDataUrl = await QRCode.toDataURL(upiLink, {
+        width: 280,
+        margin: 1,
+        color: { dark: '#0f172a', light: '#ffffff' },
+      });
+    } catch (e) {
+      console.warn('QR code data URL generation failed:', e);
     }
   }
 
-  // Use html2canvas to render
+  // 2. Build full HTML with the QR <img> tag embedded
+  const html = generateInvoiceHTML(bill, pharmacy, qrDataUrl);
+
+  // 3. Mount in DOM within coordinates (behind other elements)
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '0';
+  container.style.top = '0';
+  container.style.zIndex = '-9999';
+  container.style.pointerEvents = 'none';
+  container.style.background = '#ffffff';
+  container.innerHTML = html;
+  document.body.appendChild(container);
+
+  // 4. Ensure image is loaded and painted
+  const img = container.querySelector('img');
+  if (img) {
+    try {
+      await img.decode();
+    } catch (_) {}
+  }
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // 5. Render to Canvas via html2canvas
   try {
     const { default: html2canvas } = await import('html2canvas');
     const invoiceEl = container.querySelector('#invoice-container') as HTMLElement;
@@ -176,10 +187,11 @@ export async function generateInvoiceImage(
     }
 
     const canvas = await html2canvas(invoiceEl, {
-      scale: 2, // 2x resolution for crisp images
+      scale: 2,
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
+      allowTaint: true,
     });
 
     document.body.removeChild(container);
@@ -284,13 +296,12 @@ export interface QrCardDetails {
 /**
  * Generates an HTML payment QR card string suitable for rendering to canvas/image.
  */
-export function generatePaymentQrHTML(details: QrCardDetails): string {
+export function generatePaymentQrHTML(details: QrCardDetails, qrDataUrl?: string): string {
   const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
   const formattedAmount = numAmount.toFixed(2);
-  const cleanUpi = (details.upiId || '').trim();
+  const cleanUpi = (details.upiId || 'manojmedical@okhdfcbank').trim();
   const payee = (details.payeeName || 'Manoj Medical Hall').trim();
   const note = details.note || 'Medicine Bill';
-  const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payee)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
 
   return `
   <div id="qr-card-container" style="width:380px;background:#ffffff;padding:28px 24px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;border:2px solid #0d9488;border-radius:24px;text-align:center;box-shadow:0 10px 25px -5px rgba(0,0,0,0.1);">
@@ -309,9 +320,13 @@ export function generatePaymentQrHTML(details: QrCardDetails): string {
       ${note ? `<p style="font-size:10px;color:#94a3b8;margin:2px 0 0 0;font-style:italic;">“${note}”</p>` : ''}
     </div>
 
-    <!-- QR Code Container -->
-    <div style="display:inline-block;padding:12px;background:#ffffff;border:2px solid #e2e8f0;border-radius:18px;margin-bottom:14px;">
-      <div id="payment-qr-canvas-holder" data-upi-link="${upiLink}" style="width:200px;height:200px;"></div>
+    <!-- QR Code Container with Image -->
+    <div style="display:inline-block;padding:12px;background:#ffffff;border:2px solid #e2e8f0;border-radius:20px;margin-bottom:14px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+      ${qrDataUrl ? `
+        <img src="${qrDataUrl}" width="220" height="220" alt="UPI QR Code" style="display:block;width:220px;height:220px;margin:0 auto;" />
+      ` : `
+        <div style="width:220px;height:220px;background:#f8fafc;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">QR Code</div>
+      `}
     </div>
 
     <!-- UPI ID and instructions -->
@@ -333,41 +348,53 @@ export function generatePaymentQrHTML(details: QrCardDetails): string {
 }
 
 /**
- * Generates payment QR image as Blob (PNG)
+ * Generates payment QR image as Blob (PNG) with pre-rendered base64 QR image.
  */
 export async function generatePaymentQrImage(details: QrCardDetails): Promise<Blob | null> {
-  const html = generatePaymentQrHTML(details);
+  const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
+  const formattedAmount = numAmount.toFixed(2);
+  const cleanUpi = (details.upiId || 'manojmedical@okhdfcbank').trim();
+  const payee = (details.payeeName || 'Manoj Medical Hall').trim();
+  const note = details.note || 'Medicine Bill';
+  const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payee)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
 
+  // 1. Generate QR Data URL first (immune to canvas cloning bugs)
+  let qrDataUrl = '';
+  try {
+    const { default: QRCode } = await import('qrcode');
+    qrDataUrl = await QRCode.toDataURL(upiLink, {
+      width: 440,
+      margin: 1,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    });
+  } catch (e) {
+    console.warn('Payment QR generation failed:', e);
+  }
+
+  // 2. Build HTML with embedded <img> QR
+  const html = generatePaymentQrHTML(details, qrDataUrl);
+
+  // 3. Mount in DOM within standard coordinates
   const container = document.createElement('div');
   container.style.position = 'fixed';
-  container.style.left = '-9999px';
+  container.style.left = '0';
   container.style.top = '0';
   container.style.zIndex = '-9999';
+  container.style.pointerEvents = 'none';
+  container.style.background = '#ffffff';
   container.innerHTML = html;
   document.body.appendChild(container);
 
-  const qrHolder = container.querySelector('#payment-qr-canvas-holder') as HTMLElement;
-  if (qrHolder) {
-    const upiLink = qrHolder.getAttribute('data-upi-link') || '';
-    if (upiLink) {
-      try {
-        const { default: QRCode } = await import('qrcode');
-        const qrCanvas = document.createElement('canvas');
-        qrCanvas.width = 200;
-        qrCanvas.height = 200;
-        await QRCode.toCanvas(qrCanvas, upiLink, {
-          width: 200,
-          margin: 1,
-          color: { dark: '#0f172a', light: '#ffffff' },
-        });
-        qrHolder.innerHTML = '';
-        qrHolder.appendChild(qrCanvas);
-      } catch (e) {
-        console.warn('Payment QR generation failed:', e);
-      }
-    }
+  // 4. Ensure image is loaded & painted
+  const img = container.querySelector('img');
+  if (img) {
+    try {
+      await img.decode();
+    } catch (_) {}
   }
+  await new Promise((resolve) => setTimeout(resolve, 100));
 
+  // 5. Render via html2canvas
   try {
     const { default: html2canvas } = await import('html2canvas');
     const cardEl = container.querySelector('#qr-card-container') as HTMLElement;
@@ -381,6 +408,7 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
+      allowTaint: true,
     });
 
     document.body.removeChild(container);
