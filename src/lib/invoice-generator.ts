@@ -1,159 +1,132 @@
 /**
- * Invoice Image Generator
+ * Invoice Image Generator — Pure Canvas 2D API
  * 
- * Generates a professional invoice PNG image from billing data.
- * Uses a "post-composite" strategy for QR codes:
- * 1. html2canvas renders the HTML with a simple placeholder div for the QR area
- * 2. QR is rendered separately via QRCode.toCanvas()
- * 3. The QR canvas is drawn directly onto the output canvas using DOM-measured coordinates
- * This bypasses html2canvas's known issues with rendering <img> and <canvas> elements.
+ * Builds invoice and payment QR images entirely using the Canvas 2D API.
+ * NO html2canvas — all text, lines, boxes, and QR codes are drawn directly
+ * onto a canvas, which is then exported as a PNG blob.
+ * 
+ * This approach is 100% reliable across all browsers and devices because
+ * there's no DOM cloning, no image loading, and no external rendering library.
  */
 
 import { BillSummary, PharmacyDetails, generateUpiPaymentLink } from './billing-engine';
 
-/**
- * Generates an HTML invoice string with a white placeholder div for QR area.
- */
-export function generateInvoiceHTML(
-  bill: BillSummary,
-  pharmacy: PharmacyDetails
-): string {
-  const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
+// ─── Canvas Drawing Helpers ───────────────────────────────────────────────────
 
-  const itemRows = bill.items
-    .map(
-      (item, idx) => `
-      <tr style="border-bottom:1px solid #e5e7eb;">
-        <td style="padding:6px 4px;font-size:12px;color:#374151;">${idx + 1}</td>
-        <td style="padding:6px 4px;font-size:12px;color:#111827;font-weight:600;">${item.name}</td>
-        <td style="padding:6px 4px;font-size:12px;color:#374151;text-align:center;">${item.quantity}</td>
-        <td style="padding:6px 4px;font-size:12px;color:#374151;text-align:right;">₹${item.effectiveRate.toFixed(2)}</td>
-        <td style="padding:6px 4px;font-size:12px;color:#374151;text-align:center;">${item.discountPercent}%</td>
-        <td style="padding:6px 4px;font-size:12px;color:#111827;text-align:right;font-weight:600;">₹${item.netTotal.toFixed(2)}</td>
-      </tr>`
-    )
-    .join('');
+const SCALE = 2; // Retina quality
+const CANVAS_WIDTH = 400;
+const FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const MONO_FONT = '"Courier New", Courier, monospace';
 
-  return `
-  <div id="invoice-container" style="width:400px;background:white;padding:24px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;border:1px solid #e5e7eb;border-radius:8px;">
+function createCanvas(width: number, height: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  const canvas = document.createElement('canvas');
+  canvas.width = width * SCALE;
+  canvas.height = height * SCALE;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(SCALE, SCALE);
+  return [canvas, ctx];
+}
+
+function drawText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  opts: {
+    size?: number;
+    weight?: string;
+    color?: string;
+    align?: CanvasTextAlign;
+    font?: string;
+    maxWidth?: number;
+  } = {}
+): number {
+  const size = opts.size || 12;
+  const weight = opts.weight || '400';
+  const color = opts.color || '#111827';
+  const font = opts.font || FONT_FAMILY;
+  ctx.font = `${weight} ${size}px ${font}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = opts.align || 'left';
+  ctx.textBaseline = 'top';
+  
+  if (opts.maxWidth) {
+    // Word wrap
+    const words = text.split(' ');
+    let line = '';
+    let currentY = y;
+    const lineHeight = size * 1.3;
     
-    <!-- Header -->
-    <div style="text-align:center;border-bottom:2px solid #0d9488;padding-bottom:12px;margin-bottom:12px;">
-      <h1 style="font-size:18px;font-weight:800;color:#0d9488;margin:0;letter-spacing:0.5px;">${pharmacy.name.toUpperCase()}</h1>
-      <p style="font-size:11px;color:#6b7280;margin:4px 0 0 0;">${pharmacy.address}</p>
-      <p style="font-size:11px;color:#6b7280;margin:2px 0 0 0;">📞 ${pharmacy.phone}</p>
-    </div>
-
-    <!-- Invoice Meta -->
-    <div style="display:flex;justify-content:space-between;margin-bottom:12px;font-size:11px;">
-      <div>
-        <p style="margin:0;color:#6b7280;">Invoice No:</p>
-        <p style="margin:0;font-weight:700;color:#111827;">${bill.invoiceNo}</p>
-      </div>
-      <div style="text-align:right;">
-        <p style="margin:0;color:#6b7280;">Date:</p>
-        <p style="margin:0;font-weight:700;color:#111827;">${bill.date}</p>
-      </div>
-    </div>
-
-    <!-- Customer Info -->
-    <div style="background:#f0fdfa;padding:8px 10px;border-radius:6px;margin-bottom:12px;font-size:11px;">
-      <p style="margin:0;"><strong>Patient:</strong> ${bill.customerName}${bill.customerVillage ? ` (${bill.customerVillage})` : ''}</p>
-      ${bill.customerPhone ? `<p style="margin:2px 0 0 0;color:#6b7280;">Phone: ${bill.customerPhone}</p>` : ''}
-      ${bill.doctorName ? `<p style="margin:2px 0 0 0;color:#6b7280;">Dr: ${bill.doctorName}</p>` : ''}
-    </div>
-
-    <!-- Items Table -->
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
-      <thead>
-        <tr style="background:#f3f4f6;border-bottom:2px solid #d1d5db;">
-          <th style="padding:6px 4px;font-size:10px;text-align:left;color:#6b7280;text-transform:uppercase;">#</th>
-          <th style="padding:6px 4px;font-size:10px;text-align:left;color:#6b7280;text-transform:uppercase;">Item</th>
-          <th style="padding:6px 4px;font-size:10px;text-align:center;color:#6b7280;text-transform:uppercase;">Qty</th>
-          <th style="padding:6px 4px;font-size:10px;text-align:right;color:#6b7280;text-transform:uppercase;">MRP</th>
-          <th style="padding:6px 4px;font-size:10px;text-align:center;color:#6b7280;text-transform:uppercase;">Disc</th>
-          <th style="padding:6px 4px;font-size:10px;text-align:right;color:#6b7280;text-transform:uppercase;">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemRows}
-      </tbody>
-    </table>
-
-    <!-- Totals -->
-    <div style="border-top:2px solid #d1d5db;padding-top:8px;font-size:12px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-        <span style="color:#6b7280;">Total MRP:</span>
-        <span>₹${bill.grossAmount.toFixed(2)}</span>
-      </div>
-      ${bill.totalDiscount > 0 ? `
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px;color:#059669;">
-        <span>🎉 Discount (${bill.savingsPercent}%):</span>
-        <span>-₹${bill.totalDiscount.toFixed(2)}</span>
-      </div>
-      ` : ''}
-      ${bill.roundOff !== 0 ? `
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px;color:#6b7280;">
-        <span>Round Off:</span>
-        <span>${bill.roundOff > 0 ? '+' : ''}₹${bill.roundOff.toFixed(2)}</span>
-      </div>
-      ` : ''}
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #0d9488;margin-top:4px;">
-        <span style="font-weight:800;font-size:14px;color:#0d9488;">NET PAYABLE:</span>
-        <span style="font-weight:800;font-size:14px;color:#0d9488;">₹${bill.netPayable}</span>
-      </div>
-      <div style="text-align:center;font-size:11px;color:#6b7280;margin-bottom:4px;">
-        Payment: <strong>${bill.paymentMode.toUpperCase()}</strong>
-      </div>
-    </div>
-
-    <!-- QR Code Placeholder (will be composited after html2canvas) -->
-    ${cleanUpi ? `
-    <div style="text-align:center;margin-top:14px;padding-top:12px;border-top:1px dashed #d1d5db;">
-      <p style="font-size:11px;color:#4b5563;margin:0 0 6px 0;font-weight:600;">Scan to Pay via UPI</p>
-      <div style="display:inline-block;padding:8px;background:#ffffff;border:2px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div id="qr-placeholder" style="width:140px;height:140px;background:#ffffff;"></div>
-      </div>
-      <p style="font-size:11px;color:#0d9488;margin:6px 0 0 0;font-family:monospace;font-weight:700;">${cleanUpi}</p>
-    </div>
-    ` : ''}
-
-    <!-- Footer -->
-    <div style="text-align:center;margin-top:12px;padding-top:8px;border-top:1px solid #e5e7eb;">
-      <p style="font-size:11px;color:#6b7280;margin:0;">🙏 धन्यवाद! Get Well Soon!</p>
-      <p style="font-size:9px;color:#9ca3af;margin:4px 0 0 0;">${pharmacy.name} • ${pharmacy.address}</p>
-    </div>
-  </div>`;
+    for (const word of words) {
+      const testLine = line ? `${line} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > opts.maxWidth && line) {
+        ctx.fillText(line, x, currentY);
+        line = word;
+        currentY += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    ctx.fillText(line, x, currentY);
+    return currentY + lineHeight - y;
+  }
+  
+  ctx.fillText(text, x, y);
+  return size * 1.3;
 }
 
-/**
- * Gets the position of #qr-placeholder relative to #invoice-container (or #qr-card-container).
- * Returns pixel coordinates suitable for compositing onto the html2canvas output.
- */
-function getPlaceholderPosition(
-  container: HTMLElement,
-  rootId: string,
-  scale: number
-): { x: number; y: number; w: number; h: number } | null {
-  const root = container.querySelector(`#${rootId}`) as HTMLElement;
-  const placeholder = container.querySelector('#qr-placeholder') as HTMLElement;
-  if (!root || !placeholder) return null;
-
-  const rootRect = root.getBoundingClientRect();
-  const phRect = placeholder.getBoundingClientRect();
-
-  return {
-    x: Math.round((phRect.left - rootRect.left) * scale),
-    y: Math.round((phRect.top - rootRect.top) * scale),
-    w: Math.round(phRect.width * scale),
-    h: Math.round(phRect.height * scale),
-  };
+function drawLine(
+  ctx: CanvasRenderingContext2D,
+  x1: number, y1: number, x2: number, y2: number,
+  color: string = '#d1d5db',
+  width: number = 1,
+  dash?: number[]
+): void {
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  if (dash) ctx.setLineDash(dash);
+  else ctx.setLineDash([]);
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  r: number,
+  opts: { fill?: string; stroke?: string; strokeWidth?: number } = {}
+): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+  if (opts.fill) {
+    ctx.fillStyle = opts.fill;
+    ctx.fill();
+  }
+  if (opts.stroke) {
+    ctx.strokeStyle = opts.stroke;
+    ctx.lineWidth = opts.strokeWidth || 1;
+    ctx.stroke();
+  }
+}
+
+// ─── Invoice Image Generator ──────────────────────────────────────────────────
+
 /**
- * Renders the invoice to a canvas element and returns it as a Blob (PNG).
- * Uses post-composite strategy: html2canvas renders HTML with a white placeholder,
- * then the QR canvas is drawn directly onto the output canvas at DOM-measured coordinates.
+ * Generates a full invoice image as a PNG Blob using Canvas 2D API.
+ * Completely bypasses html2canvas — draws everything directly.
  */
 export async function generateInvoiceImage(
   bill: BillSummary,
@@ -161,93 +134,373 @@ export async function generateInvoiceImage(
 ): Promise<Blob | null> {
   const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
   const upiLink = generateUpiPaymentLink(bill.netPayable, bill.invoiceNo, pharmacy);
-  const SCALE = 2;
 
-  // 1. Generate QR as a standalone canvas (NOT as an img or data URL)
+  // Generate QR as a standalone canvas
   let qrCanvas: HTMLCanvasElement | null = null;
   if (cleanUpi) {
     try {
       const { default: QRCode } = await import('qrcode');
       qrCanvas = document.createElement('canvas');
       await QRCode.toCanvas(qrCanvas, upiLink, {
-        width: 280,
+        width: 140,
         margin: 1,
         color: { dark: '#0f172a', light: '#ffffff' },
       });
     } catch (e) {
-      console.warn('QR canvas generation failed:', e);
-      qrCanvas = null;
+      console.warn('QR generation failed:', e);
     }
   }
 
-  // 2. Build HTML with white placeholder (no img/canvas QR in the DOM)
-  const html = generateInvoiceHTML(bill, pharmacy);
+  // Calculate canvas height
+  const PAD = 24;
+  const W = CANVAS_WIDTH;
+  const innerW = W - PAD * 2;
+  let estimatedHeight = PAD; // top padding
+  estimatedHeight += 60; // header
+  estimatedHeight += 50; // invoice meta
+  estimatedHeight += 60; // customer info
+  estimatedHeight += 30 + bill.items.length * 28; // table header + rows
+  estimatedHeight += 100; // totals
+  if (cleanUpi) estimatedHeight += 220; // QR section
+  estimatedHeight += 50; // footer
+  estimatedHeight += PAD; // bottom padding
 
-  // 3. Mount in DOM — must be visible for getBoundingClientRect to work
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '0';
-  container.style.top = '0';
-  container.style.zIndex = '-9999';
-  container.style.pointerEvents = 'none';
-  container.style.opacity = '0.01';
-  container.style.background = '#ffffff';
-  container.innerHTML = html;
-  document.body.appendChild(container);
+  const [canvas, ctx] = createCanvas(W, estimatedHeight);
 
-  // 4. Wait for layout to complete
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, estimatedHeight);
 
-  // 5. Measure placeholder position BEFORE html2canvas runs
-  const qrPosition = getPlaceholderPosition(container, 'invoice-container', SCALE);
+  // Border
+  drawRoundedRect(ctx, 1, 1, W - 2, estimatedHeight - 2, 8, { stroke: '#e5e7eb' });
 
-  // 6. Render to Canvas via html2canvas
-  try {
-    const { default: html2canvas } = await import('html2canvas');
-    const invoiceEl = container.querySelector('#invoice-container') as HTMLElement;
-    if (!invoiceEl) {
-      document.body.removeChild(container);
-      return null;
-    }
+  let y = PAD;
 
-    const mainCanvas = await html2canvas(invoiceEl, {
-      scale: SCALE,
-      backgroundColor: '#ffffff',
-      logging: false,
-      useCORS: true,
-    });
+  // ─── Header ─────────────────────────────────────────────────────────
+  drawText(ctx, pharmacy.name.toUpperCase(), W / 2, y, {
+    size: 18, weight: '800', color: '#0d9488', align: 'center',
+  });
+  y += 24;
+  drawText(ctx, pharmacy.address, W / 2, y, {
+    size: 11, color: '#6b7280', align: 'center',
+  });
+  y += 16;
+  drawText(ctx, `📞 ${pharmacy.phone}`, W / 2, y, {
+    size: 11, color: '#6b7280', align: 'center',
+  });
+  y += 18;
+  drawLine(ctx, PAD, y, W - PAD, y, '#0d9488', 2);
+  y += 12;
 
-    document.body.removeChild(container);
+  // ─── Invoice Meta ───────────────────────────────────────────────────
+  drawText(ctx, 'Invoice No:', PAD, y, { size: 11, color: '#6b7280' });
+  drawText(ctx, 'Date:', W - PAD, y, { size: 11, color: '#6b7280', align: 'right' });
+  y += 14;
+  drawText(ctx, bill.invoiceNo, PAD, y, { size: 11, weight: '700', color: '#111827' });
+  drawText(ctx, bill.date, W - PAD, y, { size: 11, weight: '700', color: '#111827', align: 'right' });
+  y += 18;
 
-    // 7. Post-composite: draw QR at the measured position
-    if (qrCanvas && qrPosition) {
-      const ctx = mainCanvas.getContext('2d');
-      if (ctx) {
-        // Fill white first to ensure clean background
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(qrPosition.x, qrPosition.y, qrPosition.w, qrPosition.h);
-        // Draw QR centered within the placeholder area
-        const padding = 2;
-        const drawSize = Math.min(qrPosition.w, qrPosition.h) - padding * 2;
-        const drawX = qrPosition.x + Math.floor((qrPosition.w - drawSize) / 2);
-        const drawY = qrPosition.y + Math.floor((qrPosition.h - drawSize) / 2);
-        ctx.drawImage(qrCanvas, drawX, drawY, drawSize, drawSize);
-      }
-    }
-
-    return new Promise<Blob | null>((resolve) => {
-      mainCanvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
-    });
-  } catch (e) {
-    console.error('Invoice image generation failed:', e);
-    document.body.removeChild(container);
-    return null;
+  // ─── Customer Info ──────────────────────────────────────────────────
+  drawRoundedRect(ctx, PAD, y, innerW, bill.doctorName ? 50 : (bill.customerPhone ? 38 : 28), 6, { fill: '#f0fdfa' });
+  y += 8;
+  const patientText = `Patient: ${bill.customerName}${bill.customerVillage ? ` (${bill.customerVillage})` : ''}`;
+  drawText(ctx, patientText, PAD + 10, y, { size: 11, weight: '600', color: '#111827', maxWidth: innerW - 20 });
+  y += 16;
+  if (bill.customerPhone) {
+    drawText(ctx, `Phone: ${bill.customerPhone}`, PAD + 10, y, { size: 11, color: '#6b7280' });
+    y += 14;
   }
+  if (bill.doctorName) {
+    drawText(ctx, `Dr: ${bill.doctorName}`, PAD + 10, y, { size: 11, color: '#6b7280' });
+    y += 14;
+  }
+  y += 8;
+
+  // ─── Items Table ────────────────────────────────────────────────────
+  // Column positions
+  const col = {
+    num: PAD + 4,
+    item: PAD + 24,
+    qty: PAD + innerW * 0.55,
+    mrp: PAD + innerW * 0.68,
+    disc: PAD + innerW * 0.82,
+    amt: W - PAD - 4,
+  };
+
+  // Table header background
+  ctx.fillStyle = '#f3f4f6';
+  ctx.fillRect(PAD, y, innerW, 22);
+  drawLine(ctx, PAD, y + 22, W - PAD, y + 22, '#d1d5db', 2);
+
+  const headerY = y + 6;
+  const headerOpts = { size: 10, weight: '600', color: '#6b7280' } as const;
+  drawText(ctx, '#', col.num, headerY, headerOpts);
+  drawText(ctx, 'ITEM', col.item, headerY, headerOpts);
+  drawText(ctx, 'QTY', col.qty, headerY, { ...headerOpts, align: 'center' as const });
+  drawText(ctx, 'MRP', col.mrp, headerY, { ...headerOpts, align: 'right' as const });
+  drawText(ctx, 'DISC', col.disc, headerY, { ...headerOpts, align: 'center' as const });
+  drawText(ctx, 'AMT', col.amt, headerY, { ...headerOpts, align: 'right' as const });
+  y += 26;
+
+  // Table rows
+  for (let i = 0; i < bill.items.length; i++) {
+    const item = bill.items[i];
+    const rowY = y + 6;
+    
+    // Truncate long item names
+    ctx.font = `600 12px ${FONT_FAMILY}`;
+    let itemName = item.name;
+    while (ctx.measureText(itemName).width > innerW * 0.30 && itemName.length > 10) {
+      itemName = itemName.slice(0, -1);
+    }
+    if (itemName !== item.name) itemName += '…';
+
+    drawText(ctx, `${i + 1}`, col.num, rowY, { size: 12, color: '#374151' });
+    drawText(ctx, itemName, col.item, rowY, { size: 12, weight: '600', color: '#111827' });
+    drawText(ctx, `${item.quantity}`, col.qty, rowY, { size: 12, color: '#374151', align: 'center' });
+    drawText(ctx, `₹${item.effectiveRate.toFixed(2)}`, col.mrp, rowY, { size: 12, color: '#374151', align: 'right' });
+    drawText(ctx, `${item.discountPercent}%`, col.disc, rowY, { size: 12, color: '#374151', align: 'center' });
+    drawText(ctx, `₹${item.netTotal.toFixed(2)}`, col.amt, rowY, { size: 12, weight: '600', color: '#111827', align: 'right' });
+
+    y += 28;
+    drawLine(ctx, PAD, y, W - PAD, y, '#e5e7eb');
+  }
+  y += 8;
+
+  // ─── Totals ─────────────────────────────────────────────────────────
+  drawLine(ctx, PAD, y, W - PAD, y, '#d1d5db', 2);
+  y += 10;
+
+  // Total MRP
+  drawText(ctx, 'Total MRP:', PAD, y, { size: 12, color: '#6b7280' });
+  drawText(ctx, `₹${bill.grossAmount.toFixed(2)}`, W - PAD, y, { size: 12, align: 'right' });
+  y += 18;
+
+  // Discount
+  if (bill.totalDiscount > 0) {
+    drawText(ctx, `🎉 Discount (${bill.savingsPercent}%):`, PAD, y, { size: 12, color: '#059669' });
+    drawText(ctx, `-₹${bill.totalDiscount.toFixed(2)}`, W - PAD, y, { size: 12, color: '#059669', align: 'right' });
+    y += 18;
+  }
+
+  // Round off
+  if (bill.roundOff !== 0) {
+    drawText(ctx, 'Round Off:', PAD, y, { size: 12, color: '#6b7280' });
+    drawText(ctx, `${bill.roundOff > 0 ? '+' : ''}₹${bill.roundOff.toFixed(2)}`, W - PAD, y, { size: 12, color: '#6b7280', align: 'right' });
+    y += 18;
+  }
+
+  // Net Payable
+  drawLine(ctx, PAD, y, W - PAD, y, '#0d9488', 2);
+  y += 10;
+  drawText(ctx, 'NET PAYABLE:', PAD, y, { size: 14, weight: '800', color: '#0d9488' });
+  drawText(ctx, `₹${bill.netPayable}`, W - PAD, y, { size: 14, weight: '800', color: '#0d9488', align: 'right' });
+  y += 22;
+
+  // Payment mode
+  drawText(ctx, `Payment: ${bill.paymentMode.toUpperCase()}`, W / 2, y, {
+    size: 11, color: '#6b7280', align: 'center', weight: '600',
+  });
+  y += 18;
+
+  // ─── QR Code Section ───────────────────────────────────────────────
+  if (cleanUpi) {
+    drawLine(ctx, PAD, y, W - PAD, y, '#d1d5db', 1, [4, 4]);
+    y += 14;
+
+    drawText(ctx, 'Scan to Pay via UPI', W / 2, y, {
+      size: 11, weight: '600', color: '#4b5563', align: 'center',
+    });
+    y += 18;
+
+    // QR border box
+    const qrBoxSize = 156; // 140 QR + 8 padding each side
+    const qrBoxX = (W - qrBoxSize) / 2;
+    drawRoundedRect(ctx, qrBoxX, y, qrBoxSize, qrBoxSize, 12, {
+      fill: '#ffffff', stroke: '#e5e7eb', strokeWidth: 2,
+    });
+
+    // Draw QR code directly onto canvas
+    if (qrCanvas) {
+      const qrDrawSize = 140;
+      const qrX = (W - qrDrawSize) / 2;
+      const qrY = y + 8;
+      ctx.drawImage(qrCanvas, qrX, qrY, qrDrawSize, qrDrawSize);
+    }
+    y += qrBoxSize + 8;
+
+    // UPI ID
+    drawText(ctx, cleanUpi, W / 2, y, {
+      size: 11, weight: '700', color: '#0d9488', align: 'center', font: MONO_FONT,
+    });
+    y += 20;
+  }
+
+  // ─── Footer ─────────────────────────────────────────────────────────
+  drawLine(ctx, PAD, y, W - PAD, y, '#e5e7eb');
+  y += 10;
+  drawText(ctx, '🙏 धन्यवाद! Get Well Soon!', W / 2, y, {
+    size: 11, color: '#6b7280', align: 'center',
+  });
+  y += 16;
+  drawText(ctx, `${pharmacy.name} • ${pharmacy.address}`, W / 2, y, {
+    size: 9, color: '#9ca3af', align: 'center',
+  });
+  y += 16;
+
+  // Trim canvas to actual content height
+  const finalHeight = y + 8;
+  const [finalCanvas, finalCtx] = createCanvas(W, finalHeight);
+  finalCtx.fillStyle = '#ffffff';
+  finalCtx.fillRect(0, 0, W, finalHeight);
+  // Draw at scale=1 since both canvases are already scaled
+  finalCtx.setTransform(1, 0, 0, 1, 0, 0);
+  finalCanvas.getContext('2d')!.drawImage(canvas, 0, 0, W * SCALE, finalHeight * SCALE, 0, 0, W * SCALE, finalHeight * SCALE);
+  // Re-draw border on final
+  finalCtx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  drawRoundedRect(finalCtx, 1, 1, W - 2, finalHeight - 2, 8, { stroke: '#e5e7eb' });
+
+  return new Promise<Blob | null>((resolve) => {
+    finalCanvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+  });
+}
+
+// ─── Payment QR Card Image Generator ──────────────────────────────────────────
+
+export interface QrCardDetails {
+  amount: number | string;
+  note?: string;
+  payeeName?: string;
+  upiId: string;
+  pharmacyPhone?: string;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 /**
- * Downloads the invoice as a PNG file.
+ * Generates a payment QR card image as a PNG Blob using Canvas 2D API.
  */
+export async function generatePaymentQrImage(details: QrCardDetails): Promise<Blob | null> {
+  const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
+  const formattedAmount = numAmount.toFixed(2);
+  const cleanUpi = (details.upiId || 'manojmedical@okhdfcbank').trim();
+  const payee = (details.payeeName || 'Manoj Medical Hall').trim();
+  const note = details.note || 'Medicine Bill';
+  const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payee)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
+
+  // Generate QR canvas
+  let qrCanvas: HTMLCanvasElement | null = null;
+  try {
+    const { default: QRCode } = await import('qrcode');
+    qrCanvas = document.createElement('canvas');
+    await QRCode.toCanvas(qrCanvas, upiLink, {
+      width: 220,
+      margin: 1,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    });
+  } catch (e) {
+    console.warn('Payment QR generation failed:', e);
+  }
+
+  const W = 380;
+  const PAD = 24;
+  const H = 520;
+  const [canvas, ctx] = createCanvas(W, H);
+
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+  drawRoundedRect(ctx, 1, 1, W - 2, H - 2, 24, { fill: '#ffffff', stroke: '#0d9488', strokeWidth: 2 });
+
+  let y = 28;
+
+  // ─── NPCI Badge ─────────────────────────────────────────────────────
+  const badgeText = 'NPCI Verified UPI QR';
+  ctx.font = `700 11px ${FONT_FAMILY}`;
+  const badgeW = ctx.measureText(badgeText).width + 24;
+  drawRoundedRect(ctx, (W - badgeW) / 2, y, badgeW, 22, 11, { fill: '#f0fdfa', stroke: '#99f6e4' });
+  drawText(ctx, badgeText, W / 2, y + 5, { size: 11, weight: '700', color: '#0d9488', align: 'center' });
+  y += 30;
+
+  // ─── Shop Name ──────────────────────────────────────────────────────
+  drawText(ctx, payee.toUpperCase(), W / 2, y, {
+    size: 18, weight: '800', color: '#0f172a', align: 'center',
+  });
+  y += 22;
+  const addressLine = `सरफुद्दीनपुर, गोपालपुर (मुज़फ़्फ़रपुर)${details.pharmacyPhone ? ` • Ph: ${details.pharmacyPhone}` : ''}`;
+  drawText(ctx, addressLine, W / 2, y, { size: 11, color: '#64748b', align: 'center' });
+  y += 20;
+
+  // ─── Amount Badge ───────────────────────────────────────────────────
+  drawRoundedRect(ctx, PAD, y, W - PAD * 2, details.customerName ? 82 : 66, 16, { fill: '#f8fafc', stroke: '#e2e8f0' });
+  y += 10;
+  drawText(ctx, 'AMOUNT TO PAY', W / 2, y, {
+    size: 11, weight: '600', color: '#64748b', align: 'center',
+  });
+  y += 16;
+  drawText(ctx, `₹${formattedAmount}`, W / 2, y, {
+    size: 32, weight: '900', color: '#0d9488', align: 'center',
+  });
+  y += 38;
+  if (details.customerName) {
+    drawText(ctx, `Customer: ${details.customerName}`, W / 2, y, {
+      size: 11, weight: '600', color: '#334155', align: 'center',
+    });
+    y += 16;
+  }
+  if (note) {
+    drawText(ctx, `"${note}"`, W / 2, y, {
+      size: 10, color: '#94a3b8', align: 'center',
+    });
+    y += 14;
+  }
+  y += 6;
+
+  // ─── QR Code Box ───────────────────────────────────────────────────
+  const qrBoxSize = 244; // 220 + 12 padding each side
+  const qrBoxX = (W - qrBoxSize) / 2;
+  drawRoundedRect(ctx, qrBoxX, y, qrBoxSize, qrBoxSize, 20, {
+    fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 2,
+  });
+
+  if (qrCanvas) {
+    const qrDrawSize = 220;
+    const qrX = (W - qrDrawSize) / 2;
+    const qrY = y + 12;
+    ctx.drawImage(qrCanvas, qrX, qrY, qrDrawSize, qrDrawSize);
+  }
+  y += qrBoxSize + 14;
+
+  // ─── UPI ID ─────────────────────────────────────────────────────────
+  drawText(ctx, 'UPI ID', W / 2, y, { size: 10, color: '#64748b', align: 'center' });
+  y += 14;
+  // UPI ID badge
+  ctx.font = `700 12px ${MONO_FONT}`;
+  const upiW = ctx.measureText(cleanUpi).width + 24;
+  drawRoundedRect(ctx, (W - upiW) / 2, y, upiW, 24, 8, { fill: '#f0fdfa', stroke: '#ccfbf1' });
+  drawText(ctx, cleanUpi, W / 2, y + 5, {
+    size: 12, weight: '700', color: '#0f766e', align: 'center', font: MONO_FONT,
+  });
+  y += 34;
+
+  // ─── Footer ─────────────────────────────────────────────────────────
+  drawLine(ctx, PAD, y, W - PAD, y, '#cbd5e1', 1, [4, 4]);
+  y += 12;
+  drawText(ctx, 'Scan & Pay using Google Pay, PhonePe, Paytm, BHIM or any UPI App', W / 2, y, {
+    size: 10, color: '#64748b', align: 'center', maxWidth: W - PAD * 2,
+  });
+  y += 18;
+  drawText(ctx, '🙏 मनोज मेडिकल हॉल में खरीदारी के लिए धन्यवाद!', W / 2, y, {
+    size: 10, weight: '700', color: '#0d9488', align: 'center',
+  });
+
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+  });
+}
+
+// ─── Download & Share Functions ───────────────────────────────────────────────
+
 export async function downloadInvoiceImage(
   bill: BillSummary,
   pharmacy: PharmacyDetails
@@ -267,10 +520,6 @@ export async function downloadInvoiceImage(
   URL.revokeObjectURL(url);
 }
 
-/**
- * Shares the invoice image via WhatsApp using Web Share API (mobile),
- * or falls back to download + text link.
- */
 export async function shareInvoiceViaWhatsApp(
   bill: BillSummary,
   pharmacy: PharmacyDetails
@@ -284,7 +533,6 @@ export async function shareInvoiceViaWhatsApp(
       text: `🧾 ${pharmacy.name} - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n🙏 धन्यवाद!`,
       files: [file],
     };
-    
     if (navigator.canShare(shareData)) {
       try {
         await navigator.share(shareData);
@@ -295,7 +543,7 @@ export async function shareInvoiceViaWhatsApp(
     }
   }
 
-  // Fallback: Download the image and open WhatsApp with text message
+  // Fallback: Download + WhatsApp text
   if (blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -316,162 +564,6 @@ export async function shareInvoiceViaWhatsApp(
   window.open(waUrl, '_blank');
 }
 
-/**
- * QR Code Card Details for Payment QR Image
- */
-export interface QrCardDetails {
-  amount: number | string;
-  note?: string;
-  payeeName?: string;
-  upiId: string;
-  pharmacyPhone?: string;
-  customerName?: string;
-  customerPhone?: string;
-}
-
-/**
- * Generates an HTML payment QR card with a white placeholder div for QR area.
- */
-export function generatePaymentQrHTML(details: QrCardDetails): string {
-  const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
-  const formattedAmount = numAmount.toFixed(2);
-  const cleanUpi = (details.upiId || 'manojmedical@okhdfcbank').trim();
-  const payee = (details.payeeName || 'Manoj Medical Hall').trim();
-  const note = details.note || 'Medicine Bill';
-
-  return `
-  <div id="qr-card-container" style="width:380px;background:#ffffff;padding:28px 24px;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;border:2px solid #0d9488;border-radius:24px;text-align:center;box-shadow:0 10px 25px -5px rgba(0,0,0,0.1);">
-    <!-- Shop Header -->
-    <div style="margin-bottom:12px;">
-      <span style="display:inline-block;padding:3px 12px;background:#f0fdfa;border:1px solid #99f6e4;color:#0d9488;border-radius:9999px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">NPCI Verified UPI QR</span>
-      <h1 style="font-size:18px;font-weight:800;color:#0f172a;margin:8px 0 2px 0;">${payee.toUpperCase()}</h1>
-      <p style="font-size:11px;color:#64748b;margin:0;">सरफुद्दीनपुर, गोपालपुर (मुज़फ़्फ़रपुर)${details.pharmacyPhone ? ` • Ph: ${details.pharmacyPhone}` : ''}</p>
-    </div>
-
-    <!-- Amount Badge -->
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:12px;margin-bottom:16px;">
-      <p style="font-size:11px;color:#64748b;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Amount to Pay</p>
-      <div style="font-size:32px;font-weight:900;color:#0d9488;margin:2px 0 0 0;">₹${formattedAmount}</div>
-      ${details.customerName ? `<p style="font-size:11px;color:#334155;margin:4px 0 0 0;font-weight:600;">Customer: ${details.customerName}</p>` : ''}
-      ${note ? `<p style="font-size:10px;color:#94a3b8;margin:2px 0 0 0;font-style:italic;">"${note}"</p>` : ''}
-    </div>
-
-    <!-- QR Code Placeholder (white box, QR drawn post-render) -->
-    <div style="display:inline-block;padding:12px;background:#ffffff;border:2px solid #e2e8f0;border-radius:20px;margin-bottom:14px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-      <div id="qr-placeholder" style="width:220px;height:220px;background:#ffffff;"></div>
-    </div>
-
-    <!-- UPI ID and instructions -->
-    <div style="margin-bottom:16px;">
-      <p style="font-size:10px;color:#64748b;margin:0 0 4px 0;">UPI ID</p>
-      <div style="display:inline-block;padding:4px 12px;background:#f0fdfa;border:1px solid #ccfbf1;color:#0f766e;font-size:12px;font-family:monospace;font-weight:700;border-radius:8px;">${cleanUpi}</div>
-    </div>
-
-    <!-- Supported Apps -->
-    <div style="border-top:1px dashed #cbd5e1;padding-top:12px;">
-      <p style="font-size:10px;color:#64748b;margin:0;font-weight:500;">
-        Scan &amp; Pay using <strong>Google Pay, PhonePe, Paytm, BHIM</strong> or any UPI App
-      </p>
-      <p style="font-size:10px;color:#0d9488;font-weight:700;margin:6px 0 0 0;">
-        🙏 मनोज मेडिकल हॉल में खरीदारी के लिए धन्यवाद!
-      </p>
-    </div>
-  </div>`;
-}
-
-/**
- * Generates payment QR image as Blob (PNG) using post-composite strategy.
- */
-export async function generatePaymentQrImage(details: QrCardDetails): Promise<Blob | null> {
-  const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
-  const formattedAmount = numAmount.toFixed(2);
-  const cleanUpi = (details.upiId || 'manojmedical@okhdfcbank').trim();
-  const payee = (details.payeeName || 'Manoj Medical Hall').trim();
-  const note = details.note || 'Medicine Bill';
-  const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payee)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
-  const SCALE = 2;
-
-  // 1. Generate QR as a standalone canvas
-  let qrCanvas: HTMLCanvasElement | null = null;
-  try {
-    const { default: QRCode } = await import('qrcode');
-    qrCanvas = document.createElement('canvas');
-    await QRCode.toCanvas(qrCanvas, upiLink, {
-      width: 440,
-      margin: 1,
-      color: { dark: '#0f172a', light: '#ffffff' },
-    });
-  } catch (e) {
-    console.warn('Payment QR canvas generation failed:', e);
-    qrCanvas = null;
-  }
-
-  // 2. Build HTML with white placeholder
-  const html = generatePaymentQrHTML(details);
-
-  // 3. Mount in DOM — visible enough for getBoundingClientRect
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '0';
-  container.style.top = '0';
-  container.style.zIndex = '-9999';
-  container.style.pointerEvents = 'none';
-  container.style.opacity = '0.01';
-  container.style.background = '#ffffff';
-  container.innerHTML = html;
-  document.body.appendChild(container);
-
-  // 4. Wait for layout to complete
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  // 5. Measure placeholder position BEFORE html2canvas runs
-  const qrPosition = getPlaceholderPosition(container, 'qr-card-container', SCALE);
-
-  // 6. Render via html2canvas
-  try {
-    const { default: html2canvas } = await import('html2canvas');
-    const cardEl = container.querySelector('#qr-card-container') as HTMLElement;
-    if (!cardEl) {
-      document.body.removeChild(container);
-      return null;
-    }
-
-    const mainCanvas = await html2canvas(cardEl, {
-      scale: SCALE,
-      backgroundColor: '#ffffff',
-      logging: false,
-      useCORS: true,
-    });
-
-    document.body.removeChild(container);
-
-    // 7. Post-composite: draw QR at the measured position
-    if (qrCanvas && qrPosition) {
-      const ctx = mainCanvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(qrPosition.x, qrPosition.y, qrPosition.w, qrPosition.h);
-        const padding = 2;
-        const drawSize = Math.min(qrPosition.w, qrPosition.h) - padding * 2;
-        const drawX = qrPosition.x + Math.floor((qrPosition.w - drawSize) / 2);
-        const drawY = qrPosition.y + Math.floor((qrPosition.h - drawSize) / 2);
-        ctx.drawImage(qrCanvas, drawX, drawY, drawSize, drawSize);
-      }
-    }
-
-    return new Promise<Blob | null>((resolve) => {
-      mainCanvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
-    });
-  } catch (e) {
-    console.error('QR card image generation failed:', e);
-    document.body.removeChild(container);
-    return null;
-  }
-}
-
-/**
- * Downloads the payment QR card as a PNG image
- */
 export async function downloadPaymentQrImage(details: QrCardDetails): Promise<void> {
   const blob = await generatePaymentQrImage(details);
   if (!blob) {
@@ -489,9 +581,6 @@ export async function downloadPaymentQrImage(details: QrCardDetails): Promise<vo
   URL.revokeObjectURL(url);
 }
 
-/**
- * Shares the Payment QR code image via WhatsApp or falls back to download + WhatsApp link
- */
 export async function sharePaymentQrViaWhatsApp(details: QrCardDetails): Promise<void> {
   const blob = await generatePaymentQrImage(details);
   const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
@@ -504,7 +593,6 @@ export async function sharePaymentQrViaWhatsApp(details: QrCardDetails): Promise
       text: `💳 *${payee}*\nAmount to Pay: ₹${numAmount.toFixed(2)}\nUPI ID: ${details.upiId}\nकृपया QR स्कैन कर Google Pay/PhonePe/Paytm से भुगतान करें।\nधन्यवाद!`,
       files: [file],
     };
-
     if (navigator.canShare(shareData)) {
       try {
         await navigator.share(shareData);
@@ -515,7 +603,7 @@ export async function sharePaymentQrViaWhatsApp(details: QrCardDetails): Promise
     }
   }
 
-  // Fallback: Download image and open WhatsApp
+  // Fallback: Download + WhatsApp text
   if (blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
