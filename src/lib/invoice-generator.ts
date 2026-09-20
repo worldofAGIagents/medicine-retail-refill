@@ -2,19 +2,25 @@
  * Invoice Image Generator
  * 
  * Generates a professional invoice PNG image from billing data.
- * Used for sharing invoices via WhatsApp as images instead of plain text.
- * Includes embedded UPI QR code for payment.
+ * Uses a "post-composite" strategy for QR codes:
+ * 1. html2canvas renders the HTML with a colored placeholder for the QR area
+ * 2. QR is rendered separately via QRCode.toCanvas()
+ * 3. The QR canvas is drawn directly onto the output canvas at the placeholder coordinates
+ * This bypasses html2canvas's known issues with rendering <img> and <canvas> elements.
  */
 
 import { BillSummary, PharmacyDetails, generateUpiPaymentLink } from './billing-engine';
 
+// Unique marker color for QR placeholder (a very specific magenta that won't appear elsewhere)
+const QR_PLACEHOLDER_COLOR = '#FF00FE';
+
 /**
- * Generates an HTML invoice string suitable for rendering to canvas/image.
+ * Generates an HTML invoice string with a colored placeholder for QR area.
+ * The placeholder has a unique background color that we can locate in the rendered canvas.
  */
 export function generateInvoiceHTML(
   bill: BillSummary,
-  pharmacy: PharmacyDetails,
-  qrDataUrl?: string
+  pharmacy: PharmacyDetails
 ): string {
   const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
 
@@ -105,16 +111,12 @@ export function generateInvoiceHTML(
       </div>
     </div>
 
-    <!-- QR Code Block (Embedded as high-res Image) -->
+    <!-- QR Code Placeholder (will be composited after html2canvas) -->
     ${cleanUpi ? `
     <div style="text-align:center;margin-top:14px;padding-top:12px;border-top:1px dashed #d1d5db;">
       <p style="font-size:11px;color:#4b5563;margin:0 0 6px 0;font-weight:600;">Scan to Pay via UPI</p>
       <div style="display:inline-block;padding:8px;background:#ffffff;border:2px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        ${qrDataUrl ? `
-          <img src="${qrDataUrl}" width="140" height="140" alt="UPI QR Code" style="display:block;width:140px;height:140px;margin:0 auto;" />
-        ` : `
-          <div style="width:140px;height:140px;background:#f8fafc;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;">QR Code</div>
-        `}
+        <div id="qr-placeholder" style="width:140px;height:140px;background:${QR_PLACEHOLDER_COLOR};"></div>
       </div>
       <p style="font-size:11px;color:#0d9488;margin:6px 0 0 0;font-family:monospace;font-weight:700;">${cleanUpi}</p>
     </div>
@@ -129,8 +131,84 @@ export function generateInvoiceHTML(
 }
 
 /**
+ * Finds the bounding box of the QR placeholder (magenta rectangle) in a canvas.
+ * Scans the canvas pixel data for the marker color.
+ */
+function findPlaceholderBounds(canvas: HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  
+  // Target: #FF00FE = RGB(255, 0, 254)
+  const targetR = 255, targetG = 0, targetB = 254;
+  const tolerance = 10;
+  
+  let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+  let found = false;
+  
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const i = (y * canvas.width + x) * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      
+      if (
+        Math.abs(r - targetR) <= tolerance &&
+        Math.abs(g - targetG) <= tolerance &&
+        Math.abs(b - targetB) <= tolerance
+      ) {
+        found = true;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  
+  if (!found) return null;
+  
+  return {
+    x: minX,
+    y: minY,
+    w: maxX - minX + 1,
+    h: maxY - minY + 1,
+  };
+}
+
+/**
+ * Composites a QR code canvas onto the main canvas at the placeholder location.
+ * First fills the placeholder area with white, then draws the QR centered within it.
+ */
+function compositeQrOntoCanvas(
+  mainCanvas: HTMLCanvasElement,
+  qrCanvas: HTMLCanvasElement,
+  bounds: { x: number; y: number; w: number; h: number }
+): void {
+  const ctx = mainCanvas.getContext('2d');
+  if (!ctx) return;
+  
+  // Fill the placeholder area with white first (remove the magenta)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
+  
+  // Calculate centered position with a small padding
+  const padding = Math.max(4, Math.floor(bounds.w * 0.03));
+  const availW = bounds.w - padding * 2;
+  const availH = bounds.h - padding * 2;
+  const qrSize = Math.min(availW, availH);
+  const offsetX = bounds.x + Math.floor((bounds.w - qrSize) / 2);
+  const offsetY = bounds.y + Math.floor((bounds.h - qrSize) / 2);
+  
+  // Draw the QR canvas onto the main canvas
+  ctx.drawImage(qrCanvas, offsetX, offsetY, qrSize, qrSize);
+}
+
+/**
  * Renders the invoice to a canvas element and returns it as a Blob (PNG).
- * Uses html2canvas-style rendering with pre-rendered base64 QR image.
+ * Uses post-composite strategy: html2canvas renders HTML with a colored placeholder,
+ * then the QR canvas is drawn directly onto the output canvas.
  */
 export async function generateInvoiceImage(
   bill: BillSummary,
@@ -139,25 +217,27 @@ export async function generateInvoiceImage(
   const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
   const upiLink = generateUpiPaymentLink(bill.netPayable, bill.invoiceNo, pharmacy);
 
-  // 1. Generate QR code directly as a Base64 PNG Data URL
-  let qrDataUrl = '';
+  // 1. Generate QR as a standalone canvas (NOT as an img or data URL)
+  let qrCanvas: HTMLCanvasElement | null = null;
   if (cleanUpi) {
     try {
       const { default: QRCode } = await import('qrcode');
-      qrDataUrl = await QRCode.toDataURL(upiLink, {
+      qrCanvas = document.createElement('canvas');
+      await QRCode.toCanvas(qrCanvas, upiLink, {
         width: 280,
         margin: 1,
         color: { dark: '#0f172a', light: '#ffffff' },
       });
     } catch (e) {
-      console.warn('QR code data URL generation failed:', e);
+      console.warn('QR canvas generation failed:', e);
+      qrCanvas = null;
     }
   }
 
-  // 2. Build full HTML with the QR <img> tag embedded
-  const html = generateInvoiceHTML(bill, pharmacy, qrDataUrl);
+  // 2. Build HTML with colored placeholder (no img/canvas QR in the DOM)
+  const html = generateInvoiceHTML(bill, pharmacy);
 
-  // 3. Mount in DOM within coordinates (behind other elements)
+  // 3. Mount in DOM
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '0';
@@ -168,16 +248,10 @@ export async function generateInvoiceImage(
   container.innerHTML = html;
   document.body.appendChild(container);
 
-  // 4. Ensure image is loaded and painted
-  const img = container.querySelector('img');
-  if (img) {
-    try {
-      await img.decode();
-    } catch (_) {}
-  }
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // 4. Small delay for layout
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
-  // 5. Render to Canvas via html2canvas
+  // 5. Render to Canvas via html2canvas (captures placeholder as magenta rect)
   try {
     const { default: html2canvas } = await import('html2canvas');
     const invoiceEl = container.querySelector('#invoice-container') as HTMLElement;
@@ -186,18 +260,25 @@ export async function generateInvoiceImage(
       return null;
     }
 
-    const canvas = await html2canvas(invoiceEl, {
+    const mainCanvas = await html2canvas(invoiceEl, {
       scale: 2,
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
-      allowTaint: true,
     });
 
     document.body.removeChild(container);
 
+    // 6. Post-composite: find the magenta placeholder and draw QR over it
+    if (qrCanvas) {
+      const bounds = findPlaceholderBounds(mainCanvas);
+      if (bounds) {
+        compositeQrOntoCanvas(mainCanvas, qrCanvas, bounds);
+      }
+    }
+
     return new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+      mainCanvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
     });
   } catch (e) {
     console.error('Invoice image generation failed:', e);
@@ -239,7 +320,6 @@ export async function shareInvoiceViaWhatsApp(
   const blob = await generateInvoiceImage(bill, pharmacy);
   
   if (blob && navigator.share && navigator.canShare) {
-    // Use Web Share API (works on mobile Chrome, Safari)
     const file = new File([blob], `Invoice-${bill.invoiceNo}.png`, { type: 'image/png' });
     const shareData = {
       title: `Invoice ${bill.invoiceNo}`,
@@ -252,7 +332,6 @@ export async function shareInvoiceViaWhatsApp(
         await navigator.share(shareData);
         return;
       } catch (e) {
-        // User cancelled or share failed, fall through to fallback
         if ((e as Error).name === 'AbortError') return;
       }
     }
@@ -270,7 +349,6 @@ export async function shareInvoiceViaWhatsApp(
     URL.revokeObjectURL(url);
   }
 
-  // Open WhatsApp with text fallback
   const phone = bill.customerPhone ? bill.customerPhone.replace(/[^0-9]/g, '') : '';
   const cleanPhone = phone.length > 10 && phone.startsWith('91') ? phone : (phone.length === 10 ? '91' + phone : phone);
   const text = `🧾 *${pharmacy.name}* - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n📎 Invoice image downloaded — please share it in this chat.\n🙏 धन्यवाद!`;
@@ -294,9 +372,9 @@ export interface QrCardDetails {
 }
 
 /**
- * Generates an HTML payment QR card string suitable for rendering to canvas/image.
+ * Generates an HTML payment QR card with a colored placeholder for QR area.
  */
-export function generatePaymentQrHTML(details: QrCardDetails, qrDataUrl?: string): string {
+export function generatePaymentQrHTML(details: QrCardDetails): string {
   const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
   const formattedAmount = numAmount.toFixed(2);
   const cleanUpi = (details.upiId || 'manojmedical@okhdfcbank').trim();
@@ -317,16 +395,12 @@ export function generatePaymentQrHTML(details: QrCardDetails, qrDataUrl?: string
       <p style="font-size:11px;color:#64748b;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Amount to Pay</p>
       <div style="font-size:32px;font-weight:900;color:#0d9488;margin:2px 0 0 0;">₹${formattedAmount}</div>
       ${details.customerName ? `<p style="font-size:11px;color:#334155;margin:4px 0 0 0;font-weight:600;">Customer: ${details.customerName}</p>` : ''}
-      ${note ? `<p style="font-size:10px;color:#94a3b8;margin:2px 0 0 0;font-style:italic;">“${note}”</p>` : ''}
+      ${note ? `<p style="font-size:10px;color:#94a3b8;margin:2px 0 0 0;font-style:italic;">"${note}"</p>` : ''}
     </div>
 
-    <!-- QR Code Container with Image -->
+    <!-- QR Code Placeholder (magenta rect to be replaced post-render) -->
     <div style="display:inline-block;padding:12px;background:#ffffff;border:2px solid #e2e8f0;border-radius:20px;margin-bottom:14px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-      ${qrDataUrl ? `
-        <img src="${qrDataUrl}" width="220" height="220" alt="UPI QR Code" style="display:block;width:220px;height:220px;margin:0 auto;" />
-      ` : `
-        <div style="width:220px;height:220px;background:#f8fafc;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">QR Code</div>
-      `}
+      <div id="qr-placeholder" style="width:220px;height:220px;background:${QR_PLACEHOLDER_COLOR};"></div>
     </div>
 
     <!-- UPI ID and instructions -->
@@ -348,7 +422,7 @@ export function generatePaymentQrHTML(details: QrCardDetails, qrDataUrl?: string
 }
 
 /**
- * Generates payment QR image as Blob (PNG) with pre-rendered base64 QR image.
+ * Generates payment QR image as Blob (PNG) using post-composite strategy.
  */
 export async function generatePaymentQrImage(details: QrCardDetails): Promise<Blob | null> {
   const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
@@ -358,23 +432,25 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
   const note = details.note || 'Medicine Bill';
   const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payee)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
 
-  // 1. Generate QR Data URL first (immune to canvas cloning bugs)
-  let qrDataUrl = '';
+  // 1. Generate QR as a standalone canvas
+  let qrCanvas: HTMLCanvasElement | null = null;
   try {
     const { default: QRCode } = await import('qrcode');
-    qrDataUrl = await QRCode.toDataURL(upiLink, {
+    qrCanvas = document.createElement('canvas');
+    await QRCode.toCanvas(qrCanvas, upiLink, {
       width: 440,
       margin: 1,
       color: { dark: '#0f172a', light: '#ffffff' },
     });
   } catch (e) {
-    console.warn('Payment QR generation failed:', e);
+    console.warn('Payment QR canvas generation failed:', e);
+    qrCanvas = null;
   }
 
-  // 2. Build HTML with embedded <img> QR
-  const html = generatePaymentQrHTML(details, qrDataUrl);
+  // 2. Build HTML with placeholder (no img/canvas QR in the DOM)
+  const html = generatePaymentQrHTML(details);
 
-  // 3. Mount in DOM within standard coordinates
+  // 3. Mount in DOM
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '0';
@@ -385,16 +461,10 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
   container.innerHTML = html;
   document.body.appendChild(container);
 
-  // 4. Ensure image is loaded & painted
-  const img = container.querySelector('img');
-  if (img) {
-    try {
-      await img.decode();
-    } catch (_) {}
-  }
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // 4. Small delay for layout
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
-  // 5. Render via html2canvas
+  // 5. Render via html2canvas (captures placeholder as magenta rect)
   try {
     const { default: html2canvas } = await import('html2canvas');
     const cardEl = container.querySelector('#qr-card-container') as HTMLElement;
@@ -403,18 +473,25 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
       return null;
     }
 
-    const canvas = await html2canvas(cardEl, {
+    const mainCanvas = await html2canvas(cardEl, {
       scale: 2,
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
-      allowTaint: true,
     });
 
     document.body.removeChild(container);
 
+    // 6. Post-composite: find the magenta placeholder and draw QR over it
+    if (qrCanvas) {
+      const bounds = findPlaceholderBounds(mainCanvas);
+      if (bounds) {
+        compositeQrOntoCanvas(mainCanvas, qrCanvas, bounds);
+      }
+    }
+
     return new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+      mainCanvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
     });
   } catch (e) {
     console.error('QR card image generation failed:', e);
@@ -489,4 +566,3 @@ export async function sharePaymentQrViaWhatsApp(details: QrCardDetails): Promise
     : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
   window.open(waUrl, '_blank');
 }
-
