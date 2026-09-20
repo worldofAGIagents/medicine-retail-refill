@@ -3,20 +3,16 @@
  * 
  * Generates a professional invoice PNG image from billing data.
  * Uses a "post-composite" strategy for QR codes:
- * 1. html2canvas renders the HTML with a colored placeholder for the QR area
+ * 1. html2canvas renders the HTML with a simple placeholder div for the QR area
  * 2. QR is rendered separately via QRCode.toCanvas()
- * 3. The QR canvas is drawn directly onto the output canvas at the placeholder coordinates
+ * 3. The QR canvas is drawn directly onto the output canvas using DOM-measured coordinates
  * This bypasses html2canvas's known issues with rendering <img> and <canvas> elements.
  */
 
 import { BillSummary, PharmacyDetails, generateUpiPaymentLink } from './billing-engine';
 
-// Unique marker color for QR placeholder (a very specific magenta that won't appear elsewhere)
-const QR_PLACEHOLDER_COLOR = '#FF00FE';
-
 /**
- * Generates an HTML invoice string with a colored placeholder for QR area.
- * The placeholder has a unique background color that we can locate in the rendered canvas.
+ * Generates an HTML invoice string with a white placeholder div for QR area.
  */
 export function generateInvoiceHTML(
   bill: BillSummary,
@@ -116,7 +112,7 @@ export function generateInvoiceHTML(
     <div style="text-align:center;margin-top:14px;padding-top:12px;border-top:1px dashed #d1d5db;">
       <p style="font-size:11px;color:#4b5563;margin:0 0 6px 0;font-weight:600;">Scan to Pay via UPI</p>
       <div style="display:inline-block;padding:8px;background:#ffffff;border:2px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div id="qr-placeholder" style="width:140px;height:140px;background:${QR_PLACEHOLDER_COLOR};"></div>
+        <div id="qr-placeholder" style="width:140px;height:140px;background:#ffffff;"></div>
       </div>
       <p style="font-size:11px;color:#0d9488;margin:6px 0 0 0;font-family:monospace;font-weight:700;">${cleanUpi}</p>
     </div>
@@ -131,84 +127,33 @@ export function generateInvoiceHTML(
 }
 
 /**
- * Finds the bounding box of the QR placeholder (magenta rectangle) in a canvas.
- * Scans the canvas pixel data for the marker color.
+ * Gets the position of #qr-placeholder relative to #invoice-container (or #qr-card-container).
+ * Returns pixel coordinates suitable for compositing onto the html2canvas output.
  */
-function findPlaceholderBounds(canvas: HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  
-  // Target: #FF00FE = RGB(255, 0, 254)
-  const targetR = 255, targetG = 0, targetB = 254;
-  const tolerance = 10;
-  
-  let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-  let found = false;
-  
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      const i = (y * canvas.width + x) * 4;
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      
-      if (
-        Math.abs(r - targetR) <= tolerance &&
-        Math.abs(g - targetG) <= tolerance &&
-        Math.abs(b - targetB) <= tolerance
-      ) {
-        found = true;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-  
-  if (!found) return null;
-  
+function getPlaceholderPosition(
+  container: HTMLElement,
+  rootId: string,
+  scale: number
+): { x: number; y: number; w: number; h: number } | null {
+  const root = container.querySelector(`#${rootId}`) as HTMLElement;
+  const placeholder = container.querySelector('#qr-placeholder') as HTMLElement;
+  if (!root || !placeholder) return null;
+
+  const rootRect = root.getBoundingClientRect();
+  const phRect = placeholder.getBoundingClientRect();
+
   return {
-    x: minX,
-    y: minY,
-    w: maxX - minX + 1,
-    h: maxY - minY + 1,
+    x: Math.round((phRect.left - rootRect.left) * scale),
+    y: Math.round((phRect.top - rootRect.top) * scale),
+    w: Math.round(phRect.width * scale),
+    h: Math.round(phRect.height * scale),
   };
 }
 
 /**
- * Composites a QR code canvas onto the main canvas at the placeholder location.
- * First fills the placeholder area with white, then draws the QR centered within it.
- */
-function compositeQrOntoCanvas(
-  mainCanvas: HTMLCanvasElement,
-  qrCanvas: HTMLCanvasElement,
-  bounds: { x: number; y: number; w: number; h: number }
-): void {
-  const ctx = mainCanvas.getContext('2d');
-  if (!ctx) return;
-  
-  // Fill the placeholder area with white first (remove the magenta)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
-  
-  // Calculate centered position with a small padding
-  const padding = Math.max(4, Math.floor(bounds.w * 0.03));
-  const availW = bounds.w - padding * 2;
-  const availH = bounds.h - padding * 2;
-  const qrSize = Math.min(availW, availH);
-  const offsetX = bounds.x + Math.floor((bounds.w - qrSize) / 2);
-  const offsetY = bounds.y + Math.floor((bounds.h - qrSize) / 2);
-  
-  // Draw the QR canvas onto the main canvas
-  ctx.drawImage(qrCanvas, offsetX, offsetY, qrSize, qrSize);
-}
-
-/**
  * Renders the invoice to a canvas element and returns it as a Blob (PNG).
- * Uses post-composite strategy: html2canvas renders HTML with a colored placeholder,
- * then the QR canvas is drawn directly onto the output canvas.
+ * Uses post-composite strategy: html2canvas renders HTML with a white placeholder,
+ * then the QR canvas is drawn directly onto the output canvas at DOM-measured coordinates.
  */
 export async function generateInvoiceImage(
   bill: BillSummary,
@@ -216,6 +161,7 @@ export async function generateInvoiceImage(
 ): Promise<Blob | null> {
   const cleanUpi = (pharmacy.upiId || 'manojmedical@okhdfcbank').trim();
   const upiLink = generateUpiPaymentLink(bill.netPayable, bill.invoiceNo, pharmacy);
+  const SCALE = 2;
 
   // 1. Generate QR as a standalone canvas (NOT as an img or data URL)
   let qrCanvas: HTMLCanvasElement | null = null;
@@ -234,24 +180,28 @@ export async function generateInvoiceImage(
     }
   }
 
-  // 2. Build HTML with colored placeholder (no img/canvas QR in the DOM)
+  // 2. Build HTML with white placeholder (no img/canvas QR in the DOM)
   const html = generateInvoiceHTML(bill, pharmacy);
 
-  // 3. Mount in DOM
+  // 3. Mount in DOM — must be visible for getBoundingClientRect to work
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '0';
   container.style.top = '0';
   container.style.zIndex = '-9999';
   container.style.pointerEvents = 'none';
+  container.style.opacity = '0.01';
   container.style.background = '#ffffff';
   container.innerHTML = html;
   document.body.appendChild(container);
 
-  // 4. Small delay for layout
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // 4. Wait for layout to complete
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-  // 5. Render to Canvas via html2canvas (captures placeholder as magenta rect)
+  // 5. Measure placeholder position BEFORE html2canvas runs
+  const qrPosition = getPlaceholderPosition(container, 'invoice-container', SCALE);
+
+  // 6. Render to Canvas via html2canvas
   try {
     const { default: html2canvas } = await import('html2canvas');
     const invoiceEl = container.querySelector('#invoice-container') as HTMLElement;
@@ -261,7 +211,7 @@ export async function generateInvoiceImage(
     }
 
     const mainCanvas = await html2canvas(invoiceEl, {
-      scale: 2,
+      scale: SCALE,
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
@@ -269,11 +219,19 @@ export async function generateInvoiceImage(
 
     document.body.removeChild(container);
 
-    // 6. Post-composite: find the magenta placeholder and draw QR over it
-    if (qrCanvas) {
-      const bounds = findPlaceholderBounds(mainCanvas);
-      if (bounds) {
-        compositeQrOntoCanvas(mainCanvas, qrCanvas, bounds);
+    // 7. Post-composite: draw QR at the measured position
+    if (qrCanvas && qrPosition) {
+      const ctx = mainCanvas.getContext('2d');
+      if (ctx) {
+        // Fill white first to ensure clean background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(qrPosition.x, qrPosition.y, qrPosition.w, qrPosition.h);
+        // Draw QR centered within the placeholder area
+        const padding = 2;
+        const drawSize = Math.min(qrPosition.w, qrPosition.h) - padding * 2;
+        const drawX = qrPosition.x + Math.floor((qrPosition.w - drawSize) / 2);
+        const drawY = qrPosition.y + Math.floor((qrPosition.h - drawSize) / 2);
+        ctx.drawImage(qrCanvas, drawX, drawY, drawSize, drawSize);
       }
     }
 
@@ -372,7 +330,7 @@ export interface QrCardDetails {
 }
 
 /**
- * Generates an HTML payment QR card with a colored placeholder for QR area.
+ * Generates an HTML payment QR card with a white placeholder div for QR area.
  */
 export function generatePaymentQrHTML(details: QrCardDetails): string {
   const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
@@ -398,9 +356,9 @@ export function generatePaymentQrHTML(details: QrCardDetails): string {
       ${note ? `<p style="font-size:10px;color:#94a3b8;margin:2px 0 0 0;font-style:italic;">"${note}"</p>` : ''}
     </div>
 
-    <!-- QR Code Placeholder (magenta rect to be replaced post-render) -->
+    <!-- QR Code Placeholder (white box, QR drawn post-render) -->
     <div style="display:inline-block;padding:12px;background:#ffffff;border:2px solid #e2e8f0;border-radius:20px;margin-bottom:14px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-      <div id="qr-placeholder" style="width:220px;height:220px;background:${QR_PLACEHOLDER_COLOR};"></div>
+      <div id="qr-placeholder" style="width:220px;height:220px;background:#ffffff;"></div>
     </div>
 
     <!-- UPI ID and instructions -->
@@ -431,6 +389,7 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
   const payee = (details.payeeName || 'Manoj Medical Hall').trim();
   const note = details.note || 'Medicine Bill';
   const upiLink = `upi://pay?pa=${encodeURIComponent(cleanUpi)}&pn=${encodeURIComponent(payee)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}`;
+  const SCALE = 2;
 
   // 1. Generate QR as a standalone canvas
   let qrCanvas: HTMLCanvasElement | null = null;
@@ -447,24 +406,28 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
     qrCanvas = null;
   }
 
-  // 2. Build HTML with placeholder (no img/canvas QR in the DOM)
+  // 2. Build HTML with white placeholder
   const html = generatePaymentQrHTML(details);
 
-  // 3. Mount in DOM
+  // 3. Mount in DOM — visible enough for getBoundingClientRect
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '0';
   container.style.top = '0';
   container.style.zIndex = '-9999';
   container.style.pointerEvents = 'none';
+  container.style.opacity = '0.01';
   container.style.background = '#ffffff';
   container.innerHTML = html;
   document.body.appendChild(container);
 
-  // 4. Small delay for layout
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // 4. Wait for layout to complete
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-  // 5. Render via html2canvas (captures placeholder as magenta rect)
+  // 5. Measure placeholder position BEFORE html2canvas runs
+  const qrPosition = getPlaceholderPosition(container, 'qr-card-container', SCALE);
+
+  // 6. Render via html2canvas
   try {
     const { default: html2canvas } = await import('html2canvas');
     const cardEl = container.querySelector('#qr-card-container') as HTMLElement;
@@ -474,7 +437,7 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
     }
 
     const mainCanvas = await html2canvas(cardEl, {
-      scale: 2,
+      scale: SCALE,
       backgroundColor: '#ffffff',
       logging: false,
       useCORS: true,
@@ -482,11 +445,17 @@ export async function generatePaymentQrImage(details: QrCardDetails): Promise<Bl
 
     document.body.removeChild(container);
 
-    // 6. Post-composite: find the magenta placeholder and draw QR over it
-    if (qrCanvas) {
-      const bounds = findPlaceholderBounds(mainCanvas);
-      if (bounds) {
-        compositeQrOntoCanvas(mainCanvas, qrCanvas, bounds);
+    // 7. Post-composite: draw QR at the measured position
+    if (qrCanvas && qrPosition) {
+      const ctx = mainCanvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(qrPosition.x, qrPosition.y, qrPosition.w, qrPosition.h);
+        const padding = 2;
+        const drawSize = Math.min(qrPosition.w, qrPosition.h) - padding * 2;
+        const drawX = qrPosition.x + Math.floor((qrPosition.w - drawSize) / 2);
+        const drawY = qrPosition.y + Math.floor((qrPosition.h - drawSize) / 2);
+        ctx.drawImage(qrCanvas, drawX, drawY, drawSize, drawSize);
       }
     }
 
