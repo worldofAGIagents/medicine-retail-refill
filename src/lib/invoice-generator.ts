@@ -10,7 +10,12 @@
  */
 
 import QRCode from 'qrcode';
-import { BillSummary, PharmacyDetails, generateUpiPaymentLink } from './billing-engine';
+import {
+  BillSummary,
+  PharmacyDetails,
+  generateUpiPaymentLink,
+  generateWhatsAppBillText
+} from './billing-engine';
 import {
   cleanWhatsAppNumber,
   buildWhatsAppUrl,
@@ -576,7 +581,7 @@ export async function shareInvoiceViaWhatsApp(
   preferWeb?: boolean
 ): Promise<string> {
   const cleanPhone = cleanWhatsAppNumber(bill.customerPhone);
-  const text = `🧾 *${pharmacy.name}* - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n📎 Invoice image downloaded — please share it in this chat.\n🙏 धन्यवाद!`;
+  const text = generateWhatsAppBillText(bill, pharmacy);
   const waUrl = buildWhatsAppUrl(cleanPhone, text, preferWeb);
 
   // 1. Immediately open WhatsApp in a new tab synchronously (zero popup blocking!)
