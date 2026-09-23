@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
+import { cleanWhatsAppNumber, buildWhatsAppUrl } from '@/lib/utils';
 
 // Helper function to send single WhatsApp reminder
 async function sendSingleWhatsApp(payload: {
@@ -73,8 +74,7 @@ async function sendSingleWhatsApp(payload: {
   }
 
   // Clean phone number: remove spaces, symbols, ensure 91 country code
-  const cleanDigits = String(phone).replace(/[^0-9]/g, '');
-  const formattedPhone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+  const formattedPhone = cleanWhatsAppNumber(String(phone));
   const formattedRefillDate = refillDate ? new Date(refillDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '2-3 days';
 
   // Choose template based on category, urgency, and language preference
@@ -98,8 +98,7 @@ async function sendSingleWhatsApp(payload: {
     phone: pharmacyPhone,
   });
 
-  const encodedMessage = encodeURIComponent(message);
-  const waMeUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+  const waMeUrl = buildWhatsAppUrl(formattedPhone, message);
 
   let apiSent = false;
   let apiError = null;

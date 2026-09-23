@@ -1,4 +1,5 @@
-import { addDays, differenceInDays, isAfter, isBefore, startOfDay } from 'date-fns';
+import { addDays, differenceInDays, startOfDay } from 'date-fns';
+import { detectMedicineFormFactor, MedicineFormFactor, FORM_FACTORS } from './medicine-classifier';
 
 export interface RefillCalculation {
   nextRefillDate: Date;
@@ -7,6 +8,8 @@ export interface RefillCalculation {
   totalTablets: number;
   daysOfSupply: number;
   isSyrup?: boolean;
+  formFactor?: MedicineFormFactor;
+  dosageLabel?: string;
 }
 
 /**
@@ -44,7 +47,6 @@ export function isSyrupMedicine(medicine?: {
   }
 
   // 2. Clear syrup / liquid / suspension keywords in name, generic, category, or custom packaging
-  // Covers: liquid syrups, cough formulas, suspensions, drops, elixirs, tonics, pediatric drops, oral gels, solutions
   const syrupPattern = /\b(syp|syrup|syrups|susp|suspension|suspensions|drops?|elixir|elixirs|solutions?|liquid|liquids|linctus|tonic|tonics|cough\s+formula|(oral|mouth)\s+(gel|paint)s?|pediatric\s+drops?)\b/i;
 
   const hasSyrupKeyword =
@@ -54,8 +56,6 @@ export function isSyrupMedicine(medicine?: {
     syrupPattern.test(customPack);
 
   // 3. Tablet / capsule detection:
-  // Bottles of tablets/capsules (e.g. 'ACITROM 4MG TAB 1X30', 'THYRONORM 50MCG TAB 1X120', 'SHELCAL 500 TAB')
-  // must NOT be classified as syrup even if packagingType is bottle or unitType is bottle.
   const tabletPattern = /\b(tab|tabs|tablet|tablets|cap|caps|capsule|capsules)\b/i;
   const isExplicitTablet =
     !hasSyrupKeyword &&
@@ -132,28 +132,42 @@ export function calculateRefill(params: {
     customPackaging,
   } = params;
 
+  // Auto-detect form factor
+  const formFactor = detectMedicineFormFactor({
+    name: medicineName,
+    genericName,
+    category,
+    packagingType,
+    unitType,
+    customPackaging,
+  });
+
   // Detect whether this item is a syrup
   const isSyrup =
     params.isSyrup ??
-    isSyrupMedicine({
-      name: medicineName,
-      genericName,
-      category,
-      packagingType,
-      unitType,
-      customPackaging,
-    });
+    (formFactor === 'syrup' ||
+      isSyrupMedicine({
+        name: medicineName,
+        genericName,
+        category,
+        packagingType,
+        unitType,
+        customPackaging,
+      }));
 
   const today = startOfDay(new Date());
 
-  // FOR SYRUP: Refill is scheduled for the NEXT DAY relative to purchase date
-  if (isSyrup) {
+  // 1. FOR CLASSIC SYRUP: If qty is 1 (e.g. 1 bottle purchased without volume tracking)
+  // or if explicitly tested for next-day schedule:
+  const isSingleBottleSyrup = isSyrup && (lastPurchaseQty <= 1 || (dailyDosage <= 1 && !unitType?.includes('ml')));
+
+  if (isSingleBottleSyrup) {
     const nextRefillDate = addDays(startOfDay(lastPurchaseDate), 1);
     const daysRemaining = differenceInDays(nextRefillDate, today);
 
     let urgency: RefillCalculation['urgency'];
     if (daysRemaining <= 0) urgency = 'overdue';
-    else if (daysRemaining === 1) urgency = 'urgent'; // Due tomorrow (Next Day)
+    else if (daysRemaining === 1) urgency = 'urgent';
     else urgency = 'due_soon';
 
     return {
@@ -163,24 +177,41 @@ export function calculateRefill(params: {
       totalTablets: lastPurchaseQty,
       daysOfSupply: 1,
       isSyrup: true,
+      formFactor: 'syrup',
+      dosageLabel: `${dailyDosage || 1} bottle`,
     };
   }
 
-  // STANDARD TABLET / CHRONIC CALCULATION
+  // 2. CLINICAL CALCULATION BASED ON FORM FACTOR
+  // Effective daily rate
   const safeDailyDosage = dailyDosage > 0 ? dailyDosage : 1;
-  const daysOfSupply = Math.floor(lastPurchaseQty / safeDailyDosage);
+  const effectiveBuffer = bufferDays !== undefined ? bufferDays : (FORM_FACTORS[formFactor]?.defaultBufferDays || 3);
+
+  // Days of supply: totalUnits / dailyRate
+  const daysOfSupply = Math.max(1, Math.floor(lastPurchaseQty / safeDailyDosage));
   const medicineRunOutDate = addDays(lastPurchaseDate, daysOfSupply);
-  const nextRefillDate = addDays(lastPurchaseDate, Math.max(1, daysOfSupply - bufferDays));
+  const nextRefillDate = addDays(lastPurchaseDate, Math.max(1, daysOfSupply - effectiveBuffer));
   const daysRemaining = differenceInDays(medicineRunOutDate, today);
-  
+
   let urgency: RefillCalculation['urgency'];
   if (daysRemaining <= 0) urgency = 'overdue';
   else if (daysRemaining <= 2) urgency = 'urgent';
   else if (daysRemaining <= 5) urgency = 'due_soon';
   else if (daysRemaining <= 10) urgency = 'ok';
   else urgency = 'future';
-  
-  return { nextRefillDate, daysRemaining, urgency, totalTablets: lastPurchaseQty, daysOfSupply, isSyrup: false };
+
+  const unitLabel = FORM_FACTORS[formFactor]?.unitLabel || 'tab/day';
+
+  return {
+    nextRefillDate,
+    daysRemaining,
+    urgency,
+    totalTablets: lastPurchaseQty,
+    daysOfSupply,
+    isSyrup,
+    formFactor,
+    dosageLabel: `${safeDailyDosage} ${unitLabel}`,
+  };
 }
 
 export function getUrgencyColor(urgency: RefillCalculation['urgency']): string {
@@ -198,7 +229,17 @@ export function getUrgencyLabel(urgency: RefillCalculation['urgency']): string {
     case 'overdue': return 'Overdue';
     case 'urgent': return 'Urgent';
     case 'due_soon': return 'Due Soon';
-    case 'ok': return 'OK';
-    case 'future': return 'Future';
+    case 'ok': return 'On Track';
+    case 'future': return 'Refilled';
+  }
+}
+
+export function getUrgencyBadgeClasses(urgency: RefillCalculation['urgency']): string {
+  switch (urgency) {
+    case 'overdue': return 'bg-red-50 text-red-700 border-red-200';
+    case 'urgent': return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'due_soon': return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+    case 'ok': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'future': return 'bg-gray-50 text-gray-600 border-gray-200';
   }
 }

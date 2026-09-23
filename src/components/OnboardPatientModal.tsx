@@ -1,17 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   X, UserPlus, Phone, MapPin, Search, CheckCircle2,
   AlertCircle, Pill, Calendar, Clock, Heart, Sparkles, Plus, Minus, Trash2, Layers, RotateCcw
 } from 'lucide-react';
 import {
   detectMedicineCategory,
+  detectMedicineFormFactor,
+  parsePackDetails,
   CHRONIC_CONDITIONS_LIST,
   DEFAULT_CHRONIC_CATEGORY,
-  normalizeChronicCategory
+  normalizeChronicCategory,
+  FORM_FACTORS,
+  MedicineFormFactor,
 } from '@/lib/medicine-classifier';
-import { isSyrupMedicine } from '@/lib/refill-engine';
+import { isSyrupMedicine, calculateRefill } from '@/lib/refill-engine';
 import { clean10DigitPhone, upsertLocalCustomer } from '@/lib/customer-sync';
 
 interface Medicine {
@@ -29,13 +34,16 @@ interface Medicine {
 export interface PrescribedMedicineItem {
   medicine: Medicine;
   category?: string;
-  unitMode: 'strips' | 'tablets' | 'tins';
+  unitMode: 'strips' | 'tablets' | 'tins' | 'vials' | 'bottles' | 'devices';
   stripCount: number;
   totalQty: number;
   dailyDosage: number;
   bufferDays: number;
   customMrp?: number;
   customUnitsPerPack?: number;
+  formFactor?: MedicineFormFactor;
+  unitLabel?: string;
+  customPackaging?: string;
 }
 
 interface OnboardPatientModalProps {
@@ -61,6 +69,7 @@ export const LOCAL_VILLAGES = [
 ];
 
 export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatientModalProps) {
+  const router = useRouter();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [village, setVillage] = useState('Sarfuddinpur');
@@ -86,7 +95,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
   const medRef = useRef<HTMLDivElement>(null);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside and cleanup timer
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (medRef.current && !medRef.current.contains(e.target as Node)) {
@@ -94,7 +103,10 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
   }, []);
 
   // Search medicines from live catalog (with prefix-first ranking)
@@ -143,36 +155,33 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       setCondition(finalItemCategory);
     }
 
-    const isInfant = finalItemCategory === 'Infant Milk' || med.category === 'Infant Milk' || med.packagingType === 'tin';
-    const packUnits = med.unitsPerPack > 0 ? med.unitsPerPack : 10;
+    const packDetails = parsePackDetails({
+      name: med.name,
+      packagingType: med.packagingType,
+      unitsPerPack: med.unitsPerPack,
+      category: finalItemCategory,
+    });
 
-    let newItem: PrescribedMedicineItem;
-    if (isInfant) {
-      newItem = {
-        medicine: med,
-        category: finalItemCategory,
-        unitMode: 'tins',
-        stripCount: 1,
-        totalQty: packUnits || 400,
-        dailyDosage: 40, // 40 grams / day default
-        bufferDays: 2,
-        customMrp: med.mrp,
-        customUnitsPerPack: packUnits || 400,
-      };
-    } else {
-      const defaultStrips = 2; // e.g. 2 strips default
-      newItem = {
-        medicine: med,
-        category: finalItemCategory,
-        unitMode: 'strips',
-        stripCount: defaultStrips,
-        totalQty: defaultStrips * packUnits,
-        dailyDosage: 1, // 1 tablet / day default
-        bufferDays: 3,
-        customMrp: med.mrp,
-        customUnitsPerPack: packUnits,
-      };
-    }
+    let unitMode: PrescribedMedicineItem['unitMode'] = 'strips';
+    if (packDetails.formFactor === 'infant_milk') unitMode = 'tins';
+    else if (packDetails.formFactor === 'insulin') unitMode = 'vials';
+    else if (packDetails.formFactor === 'syrup') unitMode = 'bottles';
+    else if (packDetails.formFactor === 'inhaler') unitMode = 'devices';
+
+    const newItem: PrescribedMedicineItem = {
+      medicine: med,
+      category: finalItemCategory,
+      formFactor: packDetails.formFactor,
+      unitMode,
+      stripCount: packDetails.formFactor === 'tablet' ? 2 : 1,
+      totalQty: packDetails.defaultQty,
+      dailyDosage: packDetails.defaultDosage,
+      bufferDays: packDetails.bufferDays,
+      customMrp: med.mrp,
+      customUnitsPerPack: packDetails.unitsPerPack,
+      unitLabel: packDetails.unitLabel,
+      customPackaging: packDetails.defaultPackagingText,
+    };
 
     setPrescribedMeds((prev) => [...prev, newItem]);
     setMedSearch('');
@@ -193,21 +202,18 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
         ? merged.customUnitsPerPack
         : (current.medicine.unitsPerPack > 0 ? current.medicine.unitsPerPack : 10);
 
-      // If stripCount or customUnitsPerPack changed in strips mode, recalculate totalQty
-      if ((updates.stripCount !== undefined || updates.customUnitsPerPack !== undefined) && merged.unitMode === 'strips') {
-        const count = merged.stripCount > 0 ? merged.stripCount : 1;
-        merged.totalQty = count * packUnits;
+      // If stripCount (pack count) or customUnitsPerPack changed, recalculate totalQty
+      if (updates.stripCount !== undefined || updates.customUnitsPerPack !== undefined) {
+        if (merged.unitMode !== 'tablets') {
+          const count = merged.stripCount > 0 ? merged.stripCount : 1;
+          merged.totalQty = count * packUnits;
+        }
       }
 
-      // If unitMode switched to strips, recalculate totalQty from stripCount
-      if (updates.unitMode === 'strips') {
+      // If unitMode switched to strips/vials/bottles/devices, recalculate totalQty
+      if (updates.unitMode && updates.unitMode !== 'tablets') {
         merged.stripCount = merged.stripCount > 0 ? merged.stripCount : 1;
         merged.totalQty = merged.stripCount * packUnits;
-      }
-
-      if ((updates.stripCount !== undefined || updates.customUnitsPerPack !== undefined) && merged.unitMode === 'tins') {
-        const count = merged.stripCount > 0 ? merged.stripCount : 1;
-        merged.totalQty = count * packUnits;
       }
 
       updated[index] = merged;
@@ -217,42 +223,45 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
 
   // Compute refill dates preview for an item
   const getRefillPreview = (item: PrescribedMedicineItem) => {
-    const isSyrup = isSyrupMedicine({
+    const ff = item.formFactor || detectMedicineFormFactor({
       name: item.medicine.name,
       genericName: item.medicine.genericName,
       category: item.category || item.medicine.category,
       packagingType: item.medicine.packagingType,
-      unitType: item.unitMode === 'tins' ? 'grams' : item.unitMode === 'strips' ? 'strips' : 'tablets',
     });
 
-    if (isSyrup) {
-      const targetDate = new Date();
-      targetDate.setDate(targetDate.getDate() + 1);
-      return {
-        supplyDays: 1,
-        isSyrup: true,
-        refillDateStr: 'Tomorrow (Next Day)',
-        targetDateIso: targetDate.toISOString(),
-      };
-    }
+    const res = calculateRefill({
+      lastPurchaseDate: new Date(),
+      lastPurchaseQty: item.totalQty,
+      dailyDosage: item.dailyDosage,
+      bufferDays: item.bufferDays,
+      medicineName: item.medicine.name,
+      genericName: item.medicine.genericName,
+      category: item.category || item.medicine.category,
+      packagingType: item.medicine.packagingType,
+      unitType: ff === 'insulin' ? 'units' : ff === 'syrup' ? 'ml' : ff === 'inhaler' ? 'puffs' : ff === 'infant_milk' ? 'grams' : 'tablets',
+    });
 
-    const supplyDays = item.dailyDosage > 0 ? Math.floor(item.totalQty / item.dailyDosage) : 0;
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + Math.max(1, supplyDays - item.bufferDays));
     return {
-      supplyDays,
-      isSyrup: false,
-      refillDateStr: targetDate.toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-      targetDateIso: targetDate.toISOString(),
+      supplyDays: res.daysOfSupply,
+      isSyrup: res.isSyrup,
+      refillDateStr: res.daysOfSupply === 1 && res.isSyrup
+        ? 'Tomorrow (Next Day)'
+        : res.nextRefillDate.toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          }),
+      targetDateIso: res.nextRefillDate.toISOString(),
+      formFactor: ff,
+      dosageLabel: res.dosageLabel,
     };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement;
+    const createBill = submitter?.name === 'create_bill';
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -382,6 +391,17 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       setTimeout(() => {
         onSuccess?.();
         onClose();
+        
+        if (createBill) {
+          const params = new URLSearchParams({
+            customerId: newRecord.id,
+            name: newRecord.name,
+            phone: newRecord.phone,
+            village: newRecord.locality
+          });
+          router.push(`/billing?${params.toString()}`);
+        }
+
         // Reset form
         setName('');
         setPhone('');
@@ -739,11 +759,16 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
 
                       {/* Quantity & Dosage Controls */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-200/80">
-                        {/* Quantity Mode: Strips vs Loose Tablets */}
+                        {/* 1. Quantity Control */}
                         <div>
                           <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-bold text-gray-700 uppercase">Quantity</label>
-                            {item.unitMode !== 'tins' && (
+                            <label className="text-[11px] font-bold text-gray-700 uppercase">
+                              {item.formFactor === 'insulin' ? 'Packs / Vials' :
+                               item.formFactor === 'syrup' ? 'Bottles' :
+                               item.formFactor === 'inhaler' ? 'Inhalers' :
+                               item.formFactor === 'infant_milk' ? 'Tins' : 'Quantity'}
+                            </label>
+                            {(!item.formFactor || item.formFactor === 'tablet') && (
                               <div className="flex items-center gap-1 text-[10px]">
                                 <button
                                   type="button"
@@ -771,14 +796,14 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                             )}
                           </div>
 
-                          {item.unitMode === 'strips' ? (
+                          {item.unitMode !== 'tablets' ? (
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => handleUpdateMedicine(idx, { stripCount: Math.max(1, (item.stripCount || 1) - 1) })}
                                   className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
-                                  title="Decrease strip count"
+                                  title="Decrease pack count"
                                 >
                                   <Minus size={14} />
                                 </button>
@@ -802,53 +827,23 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                                   type="button"
                                   onClick={() => handleUpdateMedicine(idx, { stripCount: (item.stripCount || 1) + 1 })}
                                   className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
-                                  title="Increase strip count"
+                                  title="Increase pack count"
                                 >
                                   <Plus size={14} />
                                 </button>
-                                <span className="text-xs font-semibold text-gray-600">strip(s)</span>
+                                <span className="text-xs font-semibold text-gray-600">
+                                  {item.formFactor === 'insulin' ? 'vial(s)' :
+                                   item.formFactor === 'syrup' ? 'btl(s)' :
+                                   item.formFactor === 'inhaler' ? 'dev(s)' :
+                                   item.formFactor === 'infant_milk' ? 'tin(s)' : 'strip(s)'}
+                                </span>
                               </div>
                               <p className="text-[11px] text-teal-700 font-medium mt-1">
-                                = <strong>{item.totalQty}</strong> tablets ({packUnits} tabs/strip)
-                              </p>
-                            </div>
-                          ) : item.unitMode === 'tins' ? (
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateMedicine(idx, { stripCount: Math.max(1, (item.stripCount || 1) - 1) })}
-                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
-                                >
-                                  <Minus size={14} />
-                                </button>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={item.stripCount === 0 ? '' : item.stripCount}
-                                  onFocus={(e) => e.target.select()}
-                                  onChange={(e) => {
-                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                                    handleUpdateMedicine(idx, { stripCount: isNaN(val) ? 0 : val });
-                                  }}
-                                  onBlur={() => {
-                                    if (!item.stripCount || item.stripCount < 1) {
-                                      handleUpdateMedicine(idx, { stripCount: 1 });
-                                    }
-                                  }}
-                                  className="w-16 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateMedicine(idx, { stripCount: (item.stripCount || 1) + 1 })}
-                                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
-                                >
-                                  <Plus size={14} />
-                                </button>
-                                <span className="text-xs font-semibold text-gray-600">tin(s)</span>
-                              </div>
-                              <p className="text-[11px] text-teal-700 font-medium mt-1">
-                                = <strong>{item.totalQty}g</strong> powder total
+                                = <strong>{item.totalQty}</strong>{' '}
+                                {item.formFactor === 'insulin' ? 'IU total' :
+                                 item.formFactor === 'syrup' ? 'ml total' :
+                                 item.formFactor === 'inhaler' ? 'puffs total' :
+                                 item.formFactor === 'infant_milk' ? 'g powder total' : `tablets (${packUnits} tabs/strip)`}
                               </p>
                             </div>
                           ) : (
@@ -891,15 +886,21 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                           )}
                         </div>
 
-                        {/* Daily Usage */}
+                        {/* 2. Daily Dosage Control */}
                         <div>
                           <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                            Daily Usage
+                            {item.formFactor === 'insulin' ? 'Daily Units (IU)' :
+                             item.formFactor === 'syrup' ? 'Daily Dose (ml)' :
+                             item.formFactor === 'inhaler' ? 'Daily Puffs' :
+                             item.formFactor === 'infant_milk' ? 'Daily Grams' : 'Daily Dosage'}
                           </label>
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => handleUpdateMedicine(idx, { dailyDosage: Math.max(0.5, (item.dailyDosage || 1) - 0.5) })}
+                              onClick={() => {
+                                const step = item.formFactor === 'insulin' ? 5 : item.formFactor === 'syrup' ? 2.5 : item.formFactor === 'infant_milk' ? 5 : 0.5;
+                                handleUpdateMedicine(idx, { dailyDosage: Math.max(step, (item.dailyDosage || step) - step) });
+                              }}
                               className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
                             >
                               <Minus size={14} />
@@ -907,7 +908,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                             <input
                               type="number"
                               min={0.5}
-                              step={0.5}
+                              step={item.formFactor === 'insulin' ? 5 : item.formFactor === 'syrup' ? 2.5 : item.formFactor === 'infant_milk' ? 5 : 0.5}
                               value={item.dailyDosage === 0 ? '' : item.dailyDosage}
                               onFocus={(e) => e.target.select()}
                               onChange={(e) => {
@@ -916,41 +917,54 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
                               }}
                               onBlur={() => {
                                 if (!item.dailyDosage || item.dailyDosage <= 0) {
-                                  handleUpdateMedicine(idx, { dailyDosage: 1 });
+                                  handleUpdateMedicine(idx, { dailyDosage: item.formFactor === 'insulin' ? 20 : item.formFactor === 'syrup' ? 10 : 1 });
                                 }
                               }}
                               className="w-16 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
                             />
                             <button
                               type="button"
-                              onClick={() => handleUpdateMedicine(idx, { dailyDosage: (item.dailyDosage || 1) + 0.5 })}
+                              onClick={() => {
+                                const step = item.formFactor === 'insulin' ? 5 : item.formFactor === 'syrup' ? 2.5 : item.formFactor === 'infant_milk' ? 5 : 0.5;
+                                handleUpdateMedicine(idx, { dailyDosage: (item.dailyDosage || 0) + step });
+                              }}
                               className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200 shrink-0"
                             >
                               <Plus size={14} />
                             </button>
                             <span className="text-xs font-semibold text-gray-600">
-                              {item.unitMode === 'tins' ? 'g/day' : 'tab/day'}
+                              {item.unitLabel || (item.formFactor ? FORM_FACTORS[item.formFactor]?.unitLabel : 'tab/day')}
                             </span>
                           </div>
                           <p className="text-[11px] text-gray-400 mt-1">
-                            {item.unitMode === 'tins' ? 'grams per day' : 'tablets per day'}
+                            {item.formFactor === 'insulin' ? 'Insulin units / day' :
+                             item.formFactor === 'syrup' ? 'Millilitres per day' :
+                             item.formFactor === 'inhaler' ? 'Inhalation puffs / day' :
+                             item.formFactor === 'infant_milk' ? 'Grams per day' : 'Tablets per day'}
                           </p>
                         </div>
 
-                        {/* Schedule & Refill Target */}
-                        <div className="bg-white p-2 rounded-xl border border-gray-200/80 flex flex-col justify-between">
+                        {/* 3. Schedule & Refill Target */}
+                        <div className="bg-white p-2.5 rounded-xl border border-gray-200/80 flex flex-col justify-between">
                           <div>
                             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">
                               Refill Target
                             </span>
                             <span className="text-xs font-bold text-teal-800">{refillDateStr}</span>
-                            {getRefillPreview(item).isSyrup && (
-                              <span className="block mt-0.5 w-fit px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-bold rounded">
-                                Syrup (Next Day)
-                              </span>
-                            )}
+                            <div className="mt-1 flex items-center gap-1 flex-wrap">
+                              {item.formFactor && FORM_FACTORS[item.formFactor] ? (
+                                <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded border ${FORM_FACTORS[item.formFactor].color}`}>
+                                  {FORM_FACTORS[item.formFactor].shortLabel}
+                                </span>
+                              ) : null}
+                              {getRefillPreview(item).isSyrup && supplyDays === 1 && (
+                                <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[9px] font-bold rounded">
+                                  Next Day
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 pt-1 border-t border-gray-100">
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 pt-1.5 border-t border-gray-100">
                             <span>~{supplyDays}d supply</span>
                             <span className="text-amber-700 font-bold">₹{approxTotalCost.toFixed(0)}</span>
                           </div>
@@ -1044,7 +1058,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
           </div>
 
           {/* Actions */}
-          <div className="pt-3 border-t flex justify-end gap-2">
+          <div className="pt-3 border-t flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -1054,16 +1068,21 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             </button>
             <button
               type="submit"
+              name="save_profile"
+              disabled={saving}
+              className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 rounded-xl text-xs font-semibold shadow-sm transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              {saving ? 'Saving...' : 'Save Profile'}
+            </button>
+            <button
+              type="submit"
+              name="create_bill"
               disabled={saving}
               className="px-6 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors flex items-center gap-2 cursor-pointer"
             >
               {saving
                 ? 'Saving Patient...'
-                : prescribedMeds.length === 0
-                ? 'Save Patient Profile'
-                : prescribedMeds.length === 1
-                ? 'Save Patient & 1 Medicine'
-                : `Save Patient & ${prescribedMeds.length} Medicines`}
+                : 'Save & Create Bill'}
             </button>
           </div>
         </form>

@@ -29,7 +29,15 @@ import {
   downloadPaymentQrImage,
   sharePaymentQrViaWhatsApp,
 } from '@/lib/invoice-generator';
-import { detectMedicineCategory } from '@/lib/medicine-classifier';
+import {
+  buildWhatsAppUrl,
+  cleanWhatsAppNumber,
+  getWhatsAppWebUrl,
+  getWhatsAppAppUrl,
+  getWhatsAppNativeUrl,
+  openWhatsAppDirect
+} from '@/lib/utils';
+import { detectMedicineCategory, detectMedicineFormFactor, FORM_FACTORS } from '@/lib/medicine-classifier';
 import {
   getLocalCustomers,
   mergeCustomerLists,
@@ -162,7 +170,25 @@ export default function BillingPage() {
   const [completedBill, setCompletedBill] = useState<BillSummary | null>(null);
   const [savingBill, setSavingBill] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [printFormat, setPrintFormat] = useState<'thermal' | 'a4'>('thermal');
+  const [savedMrpNotice, setSavedMrpNotice] = useState<string | null>(null);
+
+  // Permanently update medicine MRP in database catalog
+  const handlePermanentMrpUpdate = async (medicineId: string | undefined, newMrp: number, medName: string) => {
+    if (!medicineId || isNaN(newMrp) || newMrp < 0) return;
+    try {
+      const res = await fetch(`/api/medicines/${medicineId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mrp: newMrp }),
+      });
+      if (res.ok) {
+        setSavedMrpNotice(`MRP for "${medName}" permanently updated to ₹${newMrp.toFixed(2)} in catalog`);
+        setTimeout(() => setSavedMrpNotice(null), 3500);
+      }
+    } catch (e) {
+      console.warn('Failed to auto-save MRP to catalog:', e);
+    }
+  };
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -262,7 +288,39 @@ export default function BillingPage() {
       window.removeEventListener('storage', syncSettings);
       window.removeEventListener('focus', syncSettings);
       window.removeEventListener(CUSTOMERS_UPDATED_EVENT, syncCustomers);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
+  }, []);
+
+  // Pre-populate customer and medicine if routed from Dashboard or Refills (+ Bill action)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const qPhone = sp.get('phone');
+    const qName = sp.get('name');
+    const qVillage = sp.get('village');
+    const qCustId = sp.get('customerId') || sp.get('id');
+    const qMedId = sp.get('medId');
+
+    if (qPhone || qName) {
+      if (qName) setCustomerName(qName);
+      if (qPhone) setCustomerPhone(qPhone.replace(/[^0-9]/g, '').slice(-10));
+      if (qVillage) setCustomerVillage(qVillage);
+      if (qCustId) setSelectedCustomerId(qCustId);
+      setIsWalkIn(false);
+      setCustSearch(`${qName || 'Patient'} (${qPhone || ''})`);
+    }
+
+    if (qMedId) {
+      fetch(`/api/medicines/${qMedId}`)
+        .then((r) => r.json())
+        .then((med) => {
+          if (med && med.id) {
+            handleAddMedicine(med);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // Close dropdowns on outside click
@@ -557,8 +615,19 @@ export default function BillingPage() {
           body: JSON.stringify(payload),
         });
       } catch (netErr) {
-        console.warn('Order sync warning (persisted locally):', netErr);
+        console.warn('Could not post order to /api/orders:', netErr);
       }
+
+      // 3. Permanently sync any edited MRPs back to database catalog
+      items.forEach((it) => {
+        if (it.medicineId && it.mrp > 0) {
+          fetch(`/api/medicines/${it.medicineId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mrp: it.mrp }),
+          }).catch(() => {});
+        }
+      });
 
       setCompletedBill(billSummary);
       setSavingBill(false);
@@ -578,36 +647,51 @@ export default function BillingPage() {
   };
 
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [copiedBillText, setCopiedBillText] = useState(false);
+  const [modalPhone, setModalPhone] = useState('');
 
-  // WhatsApp share text fallback
-  const handleShareWhatsApp = (bill: BillSummary) => {
+  // Sync modalPhone whenever a bill is completed
+  useEffect(() => {
+    if (completedBill) {
+      setModalPhone(completedBill.customerPhone || '');
+    }
+  }, [completedBill]);
+
+  // WhatsApp share text fallback with auto Web/App detection
+  const handleShareWhatsApp = (bill: BillSummary, preferWeb?: boolean) => {
     const text = generateWhatsAppBillText(bill, pharmacy);
-    const phone = bill.customerPhone ? bill.customerPhone.replace(/[^0-9]/g, '') : '';
-    const cleanPhone = phone.length > 10 && phone.startsWith('91') ? phone : (phone.length === 10 ? '91' + phone : phone);
-    const url = cleanPhone.length >= 10
-      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    const targetPhone = modalPhone.trim() || bill.customerPhone;
+    openWhatsAppDirect(targetPhone, text, preferWeb);
   };
 
   // WhatsApp Share Image Invoice (with embedded QR code)
-  const handleShareWhatsAppImage = async (bill: BillSummary) => {
+  const handleShareWhatsAppImage = async (bill: BillSummary, preferWeb?: boolean) => {
     setIsGeneratingImage(true);
     try {
-      await shareInvoiceViaWhatsApp(bill, pharmacy);
+      const activeBill = modalPhone.trim() ? { ...bill, customerPhone: modalPhone.trim() } : bill;
+      await shareInvoiceViaWhatsApp(activeBill, pharmacy, preferWeb);
     } catch (err) {
       console.error('Error sharing invoice image:', err);
-      handleShareWhatsApp(bill);
+      handleShareWhatsApp(bill, preferWeb);
     } finally {
       setIsGeneratingImage(false);
     }
+  };
+
+  // Copy full bill text to clipboard
+  const handleCopyBillText = (bill: BillSummary) => {
+    const text = generateWhatsAppBillText(bill, pharmacy);
+    navigator.clipboard.writeText(text);
+    setCopiedBillText(true);
+    setTimeout(() => setCopiedBillText(false), 2500);
   };
 
   // Download Invoice PNG Image
   const handleDownloadInvoice = async (bill: BillSummary) => {
     setIsGeneratingImage(true);
     try {
-      await downloadInvoiceImage(bill, pharmacy);
+      const activeBill = modalPhone.trim() ? { ...bill, customerPhone: modalPhone.trim() } : bill;
+      await downloadInvoiceImage(activeBill, pharmacy);
     } catch (err) {
       console.error('Error downloading invoice image:', err);
     } finally {
@@ -616,9 +700,10 @@ export default function BillingPage() {
   };
 
   // Share Standalone Payment QR Image
-  const handleShareQrImage = async (bill: BillSummary) => {
+  const handleShareQrImage = async (bill: BillSummary, preferWeb?: boolean) => {
     setIsGeneratingImage(true);
     try {
+      const targetPhone = modalPhone.trim() || bill.customerPhone;
       await sharePaymentQrViaWhatsApp({
         amount: bill.netPayable,
         note: `Bill ${bill.invoiceNo}`,
@@ -626,13 +711,12 @@ export default function BillingPage() {
         upiId: pharmacy.upiId || 'manojmedical@okhdfcbank',
         pharmacyPhone: pharmacy.phone,
         customerName: bill.customerName,
-        customerPhone: bill.customerPhone,
-      });
+        customerPhone: targetPhone,
+      }, preferWeb);
     } catch (err) {
       console.error('Error sharing QR image:', err);
     } finally {
       setIsGeneratingImage(false);
-    }
   };
 
   // Native Print
@@ -1080,13 +1164,26 @@ export default function BillingPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100 max-h-[550px] overflow-y-auto">
-                  {billSummary.items.map((item, idx) => (
+                  {savedMrpNotice && (
+                    <div className="m-3 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                      <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                      <span>{savedMrpNotice}</span>
+                    </div>
+                  )}
+                  {billSummary.items.map((item, idx) => {
+                    const formFactor = detectMedicineFormFactor({ name: item.name, category: item.category, packagingType: item.packaging });
+                    const formCfg = FORM_FACTORS[formFactor];
+
+                    return (
                     <div key={item.id} className="p-3.5 hover:bg-gray-50/50 transition-colors space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-bold text-gray-400 font-mono">{idx + 1}.</span>
-                            <span className="font-bold text-sm text-gray-900 truncate">{item.name}</span>
+                            <span className="font-bold text-sm text-gray-900">{item.name}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border shrink-0 ${formCfg.color}`}>
+                              {formCfg.shortLabel}
+                            </span>
                             {item.isInfantMilk ? (
                               <span className="text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-200 px-1.5 py-0.2 rounded shrink-0">
                                 Infant Milk (0% Disc)
@@ -1100,7 +1197,7 @@ export default function BillingPage() {
                           <div className="flex items-center gap-2 mt-1 pl-5 flex-wrap text-xs text-gray-600">
                             <span>{item.packaging || 'Standard Pack'}</span>
                             <span className="text-gray-300">•</span>
-                            <div className="flex items-center gap-1.5 bg-amber-50/90 border border-amber-200 rounded-md px-2 py-0.5" title="Click to edit MRP directly">
+                            <div className="flex items-center gap-1.5 bg-amber-50/90 border border-amber-200 rounded-md px-2 py-0.5" title="Click to edit MRP directly (updates permanently in catalog)">
                               <span className="text-[10px] font-bold text-amber-800 uppercase tracking-tight">MRP ₹</span>
                               <input
                                 type="number"
@@ -1111,6 +1208,7 @@ export default function BillingPage() {
                                   const val = parseFloat(e.target.value);
                                   handleUpdateItem(idx, { mrp: isNaN(val) ? 0 : val });
                                 }}
+                                onBlur={() => handlePermanentMrpUpdate(item.medicineId, item.mrp, item.name)}
                                 className="w-18 bg-white px-1.5 py-0.5 text-xs font-bold text-gray-900 border border-amber-300 rounded outline-none focus:ring-1 focus:ring-amber-500 text-right"
                               />
                             </div>
@@ -1205,7 +1303,8 @@ export default function BillingPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1305,10 +1404,18 @@ export default function BillingPage() {
                       <label className="text-[10px] font-semibold text-gray-500">WhatsApp Mobile</label>
                       <input
                         type="tel"
-                        maxLength={10}
+                        maxLength={16}
                         placeholder="9876543210"
                         value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                        onChange={(e) => {
+                          let cleaned = e.target.value.replace(/[^0-9]/g, '');
+                          if (cleaned.length > 10 && (cleaned.startsWith('91') || cleaned.startsWith('0'))) {
+                            cleaned = cleaned.slice(-10);
+                          } else if (cleaned.length > 10) {
+                            cleaned = cleaned.slice(0, 10);
+                          }
+                          setCustomerPhone(cleaned);
+                        }}
                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none font-mono"
                       />
                     </div>
@@ -1331,10 +1438,18 @@ export default function BillingPage() {
                       <label className="text-[10px] font-semibold text-gray-500">Phone for WhatsApp (Optional)</label>
                       <input
                         type="tel"
-                        maxLength={10}
+                        maxLength={16}
                         placeholder="10-digit mobile"
                         value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                        onChange={(e) => {
+                          let cleaned = e.target.value.replace(/[^0-9]/g, '');
+                          if (cleaned.length > 10 && (cleaned.startsWith('91') || cleaned.startsWith('0'))) {
+                            cleaned = cleaned.slice(-10);
+                          } else if (cleaned.length > 10) {
+                            cleaned = cleaned.slice(0, 10);
+                          }
+                          setCustomerPhone(cleaned);
+                        }}
                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none font-mono"
                       />
                     </div>
@@ -1543,98 +1658,197 @@ export default function BillingPage() {
         {/* ---------------- POST BILL MODAL / RECEIPT PRINT VIEW ---------------- */}
         {completedBill && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto print:static print:bg-white print:p-0">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-7 shadow-2xl space-y-4 my-auto max-h-[95vh] overflow-y-auto border border-gray-100 print:shadow-none print:border-none print:max-w-none print:p-0">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 my-auto max-h-[95vh] overflow-y-auto border border-slate-100 print:shadow-none print:border-none print:max-w-none print:p-0">
               
               {/* Modal Top Actions (Hidden when printing) */}
-              <div className="flex items-center justify-between border-b pb-3 print:hidden">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 print:hidden">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-9 h-9 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center border border-emerald-500/20">
                     <CheckCircle2 size={20} />
                   </span>
                   <div>
-                    <h3 className="font-bold text-gray-900 text-sm">Bill Generated Successfully!</h3>
-                    <p className="text-[10px] text-gray-500 font-mono">Invoice: {completedBill.invoiceNo}</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold font-heading text-slate-900 text-sm">Bill Generated Successfully</h3>
+                      <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        Ready to Dispatch
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-mono">Invoice: <span className="font-bold text-slate-700">{completedBill.invoiceNo}</span> • ₹{completedBill.netPayable}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={handleStartNewBill}
-                    className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                    title="Close"
+                <button
+                  onClick={handleStartNewBill}
+                  className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* ---------------- INSTANT WHATSAPP DISPATCH HUB (STITCH SPEC) ---------------- */}
+              <div className="p-3.5 bg-gradient-to-br from-emerald-50/70 via-teal-50/40 to-slate-50 rounded-2xl border border-emerald-200/80 space-y-3 print:hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                      <MessageCircle size={14} />
+                    </div>
+                    <span className="text-xs font-bold text-slate-900">Direct WhatsApp Dispatch</span>
+                  </div>
+
+                  {/* Recipient Indicator */}
+                  {cleanWhatsAppNumber(modalPhone || completedBill.customerPhone) ? (
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Direct Chat: +91 {cleanWhatsAppNumber(modalPhone || completedBill.customerPhone).slice(-10)}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      No mobile entered
+                    </span>
+                  )}
+                </div>
+
+                {/* Recipient Phone Input (Editable in-modal) */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      maxLength={16}
+                      placeholder="Enter 10-digit mobile for WhatsApp"
+                      value={modalPhone}
+                      onChange={(e) => {
+                        let cleaned = e.target.value.replace(/[^0-9]/g, '');
+                        if (cleaned.length > 10 && (cleaned.startsWith('91') || cleaned.startsWith('0'))) {
+                          cleaned = cleaned.slice(-10);
+                        } else if (cleaned.length > 10) {
+                          cleaned = cleaned.slice(0, 10);
+                        }
+                        setModalPhone(cleaned);
+                      }}
+                      className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 shadow-2xs"
+                    />
+                  </div>
+                  {modalPhone !== completedBill.customerPhone && modalPhone.length === 10 && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-white px-2 py-1.5 rounded-xl border border-emerald-200">
+                      Target Updated
+                    </span>
+                  )}
+                </div>
+
+                {/* Primary Automated WhatsApp Button */}
+                <button
+                  type="button"
+                  disabled={isGeneratingImage}
+                  onClick={() => handleShareWhatsAppImage(completedBill)}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all disabled:opacity-60 cursor-pointer"
+                >
+                  {isGeneratingImage ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Preparing High-Res Invoice &amp; Opening...
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle size={16} /> 1-Click WhatsApp Invoice (Auto-Downloads &amp; Opens Chat)
+                    </>
+                  )}
+                </button>
+
+                {/* Direct 1-Click Native Links (Never Blocked by Popup Blockers) */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <a
+                    href={getWhatsAppWebUrl(modalPhone.trim() || completedBill.customerPhone, generateWhatsAppBillText(completedBill, pharmacy))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-2 bg-white hover:bg-emerald-50/80 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
+                    title="Directly opens WhatsApp Web chat tab on PC/Mac without landing page"
                   >
-                    <X size={20} />
+                    <ExternalLink size={12} className="text-emerald-600 shrink-0" />
+                    <span>WhatsApp Web</span>
+                  </a>
+
+                  <a
+                    href={getWhatsAppNativeUrl(modalPhone.trim() || completedBill.customerPhone, generateWhatsAppBillText(completedBill, pharmacy))}
+                    className="py-2 px-2 bg-white hover:bg-emerald-50/80 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
+                    title="Directly opens native WhatsApp Desktop app on Mac/PC"
+                  >
+                    <Share2 size={12} className="text-emerald-600 shrink-0" />
+                    <span>Desktop App</span>
+                  </a>
+
+                  <a
+                    href={getWhatsAppAppUrl(modalPhone.trim() || completedBill.customerPhone, generateWhatsAppBillText(completedBill, pharmacy))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-2 bg-white hover:bg-emerald-50/80 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
+                    title="Directly opens WhatsApp Application on phone or wa.me"
+                  >
+                    <Smartphone size={12} className="text-emerald-600 shrink-0" />
+                    <span>Mobile App</span>
+                  </a>
+                </div>
+
+                {/* Fast Clipboard helper */}
+                <div className="flex items-center justify-between pt-1 border-t border-emerald-200/50">
+                  <span className="text-[10px] text-slate-500">
+                    💡 If image doesn't auto-attach, paste the bill text:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyBillText(completedBill)}
+                    className="text-[11px] font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedBillText ? (
+                      <>
+                        <Check size={12} className="text-emerald-600" /> Copied to Clipboard!
+                      </>
+                    ) : (
+                      <>
+                        <Share2 size={12} /> Copy Bill Text
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
 
-              {/* Action Buttons Toolbar */}
-              <div className="space-y-2 print:hidden">
-                {/* Primary Sharing Actions */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={isGeneratingImage}
-                    onClick={() => handleShareWhatsAppImage(completedBill)}
-                    className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    {isGeneratingImage ? (
-                      <>
-                        <Loader2 size={15} className="animate-spin" /> Generating Image...
-                      </>
-                    ) : (
-                      <>
-                        <MessageCircle size={15} /> WhatsApp Image Bill (with QR)
-                      </>
-                    )}
-                  </button>
+              {/* ---------------- SECONDARY PRINT & BILL ACTIONS ---------------- */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 print:hidden">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Printer size={14} className="text-slate-600" /> Print Bill
+                </button>
 
-                  <button
-                    type="button"
-                    disabled={isGeneratingImage}
-                    onClick={() => handleShareQrImage(completedBill)}
-                    className="w-full py-2.5 px-3 bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    <QrCode size={15} /> Send Payment QR Image
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={isGeneratingImage}
+                  onClick={() => handleDownloadInvoice(completedBill)}
+                  className="px-2.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <Download size={14} className="text-slate-600" /> Save Image
+                </button>
 
-                {/* Secondary Actions */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={handlePrint}
-                    className="px-2.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <Printer size={13} /> Print Bill
-                  </button>
+                <button
+                  type="button"
+                  disabled={isGeneratingImage}
+                  onClick={() => handleShareQrImage(completedBill)}
+                  className="px-2.5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <QrCode size={14} className="text-teal-600" /> Payment QR
+                </button>
 
-                  <button
-                    type="button"
-                    disabled={isGeneratingImage}
-                    onClick={() => handleDownloadInvoice(completedBill)}
-                    className="px-2.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
-                  >
-                    <Download size={13} /> Save Image
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleShareWhatsApp(completedBill)}
-                    className="px-2.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                    title="Send standard text summary"
-                  >
-                    <Share2 size={13} /> Text Bill
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleStartNewBill}
-                    className="px-2.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <Plus size={13} /> Next Bill
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleStartNewBill}
+                  className="px-2.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                >
+                  <Plus size={14} /> Next Bill
+                </button>
               </div>
 
               {/* ---------------- THERMAL 80MM / A4 RECEIPT PREVIEW ---------------- */}

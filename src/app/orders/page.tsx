@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
 import { QRCodeSVG } from 'qrcode.react';
+import { buildWhatsAppUrl } from '@/lib/utils';
 
 
 interface OrderItem {
@@ -144,8 +145,6 @@ export default function OrdersPage() {
 
   const handleSendWhatsAppDispatch = (order: Order) => {
     const medNames = order.items?.map((i) => `${i.medicineName} (${i.quantity})`).join(', ') || 'Prescription Order';
-    const cleanDigits = (order.customer?.phone || '').replace(/[^0-9]/g, '');
-    const phone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
 
     const template = settings?.outForDeliveryTemplate || DEFAULT_TEMPLATES.outForDeliveryTemplate;
     const message = renderTemplate(template, {
@@ -158,7 +157,7 @@ export default function OrdersPage() {
       address: order.deliveryAddress || '',
     });
 
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    const url = buildWhatsAppUrl(order.customer?.phone, message);
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 

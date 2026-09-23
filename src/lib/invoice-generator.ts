@@ -11,6 +11,13 @@
 
 import QRCode from 'qrcode';
 import { BillSummary, PharmacyDetails, generateUpiPaymentLink } from './billing-engine';
+import {
+  cleanWhatsAppNumber,
+  buildWhatsAppUrl,
+  getWhatsAppWebUrl,
+  getWhatsAppAppUrl,
+  openWhatsAppDirect
+} from './utils';
 
 const SCALE = 2; // Retina 2x scale for ultra-crisp output
 const CANVAS_WIDTH = 400;
@@ -565,46 +572,63 @@ export async function downloadInvoiceImage(
 
 export async function shareInvoiceViaWhatsApp(
   bill: BillSummary,
-  pharmacy: PharmacyDetails
-): Promise<void> {
-  const blob = await generateInvoiceImage(bill, pharmacy);
+  pharmacy: PharmacyDetails,
+  preferWeb?: boolean
+): Promise<string> {
+  const cleanPhone = cleanWhatsAppNumber(bill.customerPhone);
+  const text = `🧾 *${pharmacy.name}* - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n📎 Invoice image downloaded — please share it in this chat.\n🙏 धन्यवाद!`;
+  const waUrl = buildWhatsAppUrl(cleanPhone, text, preferWeb);
 
-  if (blob && navigator.share && navigator.canShare) {
-    const file = new File([blob], `Invoice-${bill.invoiceNo}.png`, { type: 'image/png' });
-    const shareData = {
-      title: `Invoice ${bill.invoiceNo}`,
-      text: `🧾 ${pharmacy.name} - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n🙏 धन्यवाद!`,
-      files: [file],
-    };
-    if (navigator.canShare(shareData)) {
-      try {
-        await navigator.share(shareData);
-        return;
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') return;
+  // Pre-open blank tab synchronously in user event context to guarantee popup blocker bypass
+  let popup: Window | null = null;
+  try {
+    popup = window.open('about:blank', '_blank');
+  } catch (_) {}
+
+  // Generate the high-res canvas invoice
+  let blob: Blob | null = null;
+  try {
+    blob = await generateInvoiceImage(bill, pharmacy);
+  } catch (err) {
+    console.warn('Canvas invoice generation warning:', err);
+  }
+
+  // 1. Auto-download the image
+  if (blob) {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice-${bill.invoiceNo}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (_) {}
+
+    // 2. Also copy image to clipboard if supported by browser
+    try {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
       }
+    } catch (_) {}
+  }
+
+  // 3. Navigate the pre-opened popup to WhatsApp
+  if (popup && !popup.closed) {
+    popup.location.href = waUrl;
+  } else {
+    try {
+      const w = window.open(waUrl, '_blank', 'noopener,noreferrer');
+      if (!w || w.closed) {
+        window.location.href = waUrl;
+      }
+    } catch (_) {
+      window.location.href = waUrl;
     }
   }
 
-  // Fallback: Download + WhatsApp text
-  if (blob) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Invoice-${bill.invoiceNo}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  const phone = bill.customerPhone ? bill.customerPhone.replace(/[^0-9]/g, '') : '';
-  const cleanPhone = phone.length > 10 && phone.startsWith('91') ? phone : (phone.length === 10 ? '91' + phone : phone);
-  const text = `🧾 *${pharmacy.name}* - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n📎 Invoice image downloaded — please share it in this chat.\n🙏 धन्यवाद!`;
-  const waUrl = cleanPhone
-    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
-    : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  window.open(waUrl, '_blank');
+  return waUrl;
 }
 
 export async function downloadPaymentQrImage(details: QrCardDetails): Promise<void> {
@@ -624,45 +648,64 @@ export async function downloadPaymentQrImage(details: QrCardDetails): Promise<vo
   URL.revokeObjectURL(url);
 }
 
-export async function sharePaymentQrViaWhatsApp(details: QrCardDetails): Promise<void> {
-  const blob = await generatePaymentQrImage(details);
+export async function sharePaymentQrViaWhatsApp(
+  details: QrCardDetails,
+  preferWeb?: boolean
+): Promise<string> {
   const numAmount = typeof details.amount === 'string' ? parseFloat(details.amount) || 0 : Number(details.amount) || 0;
   const payee = details.payeeName || 'Manoj Medical Hall';
+  const cleanPhone = cleanWhatsAppNumber(details.customerPhone);
+  const text = `💳 *${payee}*\nAmount to Pay: *₹${numAmount.toFixed(2)}*\nUPI ID: \`${details.upiId}\`\n📎 Payment QR image downloaded — please share/scan to pay via Google Pay, PhonePe or Paytm.\n🙏 धन्यवाद!`;
+  const waUrl = buildWhatsAppUrl(cleanPhone, text, preferWeb);
 
-  if (blob && navigator.share && navigator.canShare) {
-    const file = new File([blob], `Payment-QR-${numAmount}.png`, { type: 'image/png' });
-    const shareData = {
-      title: `UPI Payment QR - ₹${numAmount.toFixed(2)}`,
-      text: `💳 *${payee}*\nAmount to Pay: ₹${numAmount.toFixed(2)}\nUPI ID: ${details.upiId}\nकृपया QR स्कैन कर Google Pay/PhonePe/Paytm से भुगतान करें।\nधन्यवाद!`,
-      files: [file],
-    };
-    if (navigator.canShare(shareData)) {
-      try {
-        await navigator.share(shareData);
-        return;
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') return;
+  // Pre-open blank tab synchronously
+  let popup: Window | null = null;
+  try {
+    popup = window.open('about:blank', '_blank');
+  } catch (_) {}
+
+  let blob: Blob | null = null;
+  try {
+    blob = await generatePaymentQrImage(details);
+  } catch (err) {
+    console.warn('Canvas payment QR generation warning:', err);
+  }
+
+  // 1. Auto-download the image
+  if (blob) {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payment-QR-${numAmount}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (_) {}
+
+    // 2. Also copy to clipboard if supported
+    try {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
       }
+    } catch (_) {}
+  }
+
+  // 3. Navigate to WhatsApp
+  if (popup && !popup.closed) {
+    popup.location.href = waUrl;
+  } else {
+    try {
+      const w = window.open(waUrl, '_blank', 'noopener,noreferrer');
+      if (!w || w.closed) {
+        window.location.href = waUrl;
+      }
+    } catch (_) {
+      window.location.href = waUrl;
     }
   }
 
-  // Fallback: Download + WhatsApp text
-  if (blob) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Payment-QR-${numAmount}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  const phone = details.customerPhone ? details.customerPhone.replace(/[^0-9]/g, '') : '';
-  const cleanPhone = phone.length > 10 && phone.startsWith('91') ? phone : (phone.length === 10 ? '91' + phone : phone);
-  const text = `💳 *${payee}*\nAmount to Pay: *₹${numAmount.toFixed(2)}*\nUPI ID: \`${details.upiId}\`\n📎 Payment QR image downloaded — please share/scan to pay via Google Pay, PhonePe or Paytm.\n🙏 धन्यवाद!`;
-  const waUrl = cleanPhone
-    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
-    : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  window.open(waUrl, '_blank');
+  return waUrl;
 }
+

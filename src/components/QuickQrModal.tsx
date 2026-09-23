@@ -6,6 +6,13 @@ import {
   X, QrCode, IndianRupee, Copy, Check, Share2, Maximize2, Minimize2,
   Sparkles, ShieldCheck, AlertCircle, Phone
 } from 'lucide-react';
+import {
+  buildWhatsAppUrl,
+  openWhatsAppDirect,
+  getWhatsAppWebUrl,
+  getWhatsAppAppUrl,
+  cleanWhatsAppNumber
+} from '@/lib/utils';
 
 interface QuickQrModalProps {
   isOpen: boolean;
@@ -110,14 +117,9 @@ export function QuickQrModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShareWhatsApp = () => {
-    const cleanDigits = phone.replace(/[^0-9]/g, '');
-    const recipient = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+  const handleShareWhatsApp = (preferWeb = false) => {
     const msg = `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine refill bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Click to pay instantly via UPI (GPay/PhonePe/Paytm/BHIM):\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`;
-    const waUrl = recipient
-      ? `https://wa.me/${recipient}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    openWhatsAppDirect(phone, msg, preferWeb);
   };
 
   return (
@@ -284,33 +286,64 @@ export function QuickQrModal({
           </div>
 
           {/* Doorstep Action Buttons */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              onClick={handleShareWhatsApp}
-              disabled={numAmount <= 0}
-              className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Send WhatsApp</span>
-            </button>
+          <div className="space-y-2 pt-1">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleShareWhatsApp(false)}
+                disabled={numAmount <= 0}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>1-Click WhatsApp</span>
+              </button>
 
-            <button
-              onClick={handleCopyLink}
-              disabled={numAmount <= 0}
-              className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed border border-gray-200"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-green-600" />
-                  <span className="text-green-700">UPI Link Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-gray-600" />
-                  <span>Copy UPI Link</span>
-                </>
-              )}
-            </button>
+              <button
+                onClick={handleCopyLink}
+                disabled={numAmount <= 0}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 cursor-pointer"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">UPI Link Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Copy UPI Link</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Direct 1-Click Native Links (Never Blocked by Popup Blockers) */}
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={getWhatsAppWebUrl(
+                  phone,
+                  `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine refill bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Click to pay instantly via UPI (GPay/PhonePe/Paytm/BHIM):\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-1.5 px-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                title="Open WhatsApp Web directly"
+              >
+                <span>WhatsApp Web ↗</span>
+              </a>
+
+              <a
+                href={getWhatsAppAppUrl(
+                  phone,
+                  `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine refill bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Click to pay instantly via UPI (GPay/PhonePe/Paytm/BHIM):\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-1.5 px-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                title="Open WhatsApp App directly"
+              >
+                <span>WhatsApp App ↗</span>
+              </a>
+            </div>
           </div>
 
           <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400 text-center pt-1">

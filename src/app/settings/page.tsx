@@ -20,6 +20,7 @@ import {
   TemplateKey,
   TemplateDefinition
 } from '@/lib/templates';
+import { buildWhatsAppUrl } from '@/lib/utils';
 
 type TabKey = 'admin' | 'import' | 'whatsapp' | 'upi' | 'refills' | 'marg';
 
@@ -617,12 +618,11 @@ export default function SettingsPage() {
 
   // Send Test WhatsApp to owner mobile
   const handleSendTestWhatsApp = () => {
-    const cleanDigits = testPhone.replace(/[^0-9]/g, '').slice(-10);
-    if (!cleanDigits || cleanDigits.length < 10) {
+    if (!testPhone || testPhone.trim().length === 0) {
       alert('Please enter a valid 10-digit mobile number for the WhatsApp test.');
       return;
     }
-    const waUrl = `https://wa.me/91${cleanDigits}?text=${encodeURIComponent(previewText)}`;
+    const waUrl = buildWhatsAppUrl(testPhone, previewText);
     window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 

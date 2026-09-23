@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout';
 import { ArrowLeft, Save, Trash2, Edit, AlertCircle, CheckCircle2, Search, Plus, X, Loader2 } from 'lucide-react';
-import { CHRONIC_CONDITIONS_LIST } from '@/lib/medicine-classifier';
+import { CHRONIC_CONDITIONS_LIST, detectMedicineFormFactor, parsePackDetails, FORM_FACTORS } from '@/lib/medicine-classifier';
 import { upsertLocalCustomer } from '@/lib/customer-sync';
 
 interface Medicine {
@@ -67,13 +67,25 @@ export default function CustomerDetailPage() {
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
   const [selectedMed, setSelectedMed] = useState<Medicine | null>(null);
   const [newDosage, setNewDosage] = useState(1);
-  const [newQty, setNewQty] = useState(30);
-  const [newPackaging, setNewPackaging] = useState('30 Tablets');
+  const [newQty, setNewQty] = useState<number | ''>('');
+  const [newPackaging, setNewPackaging] = useState('');
+  const [newUnitLabel, setNewUnitLabel] = useState('tab/day');
   const [addingMed, setAddingMed] = useState(false);
+
+  const handleSelectMedicineForAdd = (med: Medicine) => {
+    setSelectedMed(med);
+    setMedicineResults([]);
+    setSearchQuery(med.name);
+    const details = parsePackDetails(med);
+    setNewDosage(details.defaultDosage);
+    setNewQty('');
+    setNewPackaging('');
+    setNewUnitLabel(details.unitLabel);
+  };
 
   // Edit Prescription States
   const [editingPresc, setEditingPresc] = useState<Prescription | null>(null);
-  const [editDosage, setEditDosage] = useState<number>(1);
+  const [editDosage, setEditDosage] = useState<number | ''>(1);
   const [editPackaging, setEditPackaging] = useState<string>('');
   const [savingPresc, setSavingPresc] = useState(false);
 
@@ -152,7 +164,7 @@ export default function CustomerDetailPage() {
   const handleStartEditPresc = (p: Prescription) => {
     setEditingPresc(p);
     setEditDosage(p.dailyDosage || 1);
-    setEditPackaging(p.customPackaging || '30 Tablets');
+    setEditPackaging(p.customPackaging || '');
   };
 
   const handleSaveEditPresc = async () => {
@@ -166,7 +178,7 @@ export default function CustomerDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           dailyDosage: Number(editDosage) || 1,
-          customPackaging: editPackaging || '30 Tablets',
+          customPackaging: editPackaging,
         }),
       });
       if (!res.ok) throw new Error('Failed to update prescription');
@@ -207,7 +219,7 @@ export default function CustomerDetailPage() {
           customerId,
           medicineId: selectedMed.id,
           dailyDosage: newDosage,
-          quantity: newQty,
+          quantity: newQty || 1,
           packaging: newPackaging
         })
       });
@@ -336,11 +348,21 @@ export default function CustomerDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {customer.prescriptions?.filter(p => p.isActive).map(p => (
+                {customer.prescriptions?.filter(p => p.isActive).map(p => {
+                  const ff = detectMedicineFormFactor(p.medicine);
+                  const cfg = FORM_FACTORS[ff];
+                  return (
                   <tr key={p.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="py-3.5 px-4 font-semibold text-gray-900">{p.medicine?.name}</td>
+                    <td className="py-3.5 px-4 font-semibold text-gray-900">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{p.medicine?.name}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border shrink-0 ${cfg.color}`}>
+                          {cfg.shortLabel}
+                        </span>
+                      </div>
+                    </td>
                     <td className="py-3.5 px-4">
-                      <p className="text-sm font-medium">{p.dailyDosage} / day</p>
+                      <p className="text-sm font-medium">{p.dailyDosage} {cfg.unitLabel}</p>
                       <p className="text-[10px] text-gray-500">{p.customPackaging}</p>
                     </td>
                     <td className="py-3.5 px-4 text-sm text-gray-600">
@@ -369,7 +391,8 @@ export default function CustomerDetailPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {(!customer.prescriptions || customer.prescriptions.filter(p => p.isActive).length === 0) && (
                   <tr>
                     <td colSpan={6} className="text-center py-8 text-gray-400 text-sm">No active prescriptions</td>
@@ -398,27 +421,37 @@ export default function CustomerDetailPage() {
               </div>
               {medicineResults.length > 0 && !selectedMed && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
-                  {medicineResults.map(med => (
-                    <div 
-                      key={med.id} 
-                      onClick={() => { setSelectedMed(med); setMedicineResults([]); setSearchQuery(med.name); }}
-                      className="p-2 px-3 hover:bg-gray-50 cursor-pointer text-sm font-medium border-b border-gray-100 last:border-0"
-                    >
-                      {med.name} <span className="text-xs text-gray-400 font-normal">({med.category})</span>
-                    </div>
-                  ))}
+                  {medicineResults.map(med => {
+                    const ff = detectMedicineFormFactor(med);
+                    const cfg = FORM_FACTORS[ff];
+                    return (
+                      <div 
+                        key={med.id} 
+                        onClick={() => handleSelectMedicineForAdd(med)}
+                        className="p-2.5 px-3 hover:bg-gray-50 cursor-pointer text-sm font-medium border-b border-gray-100 last:border-0 flex items-center justify-between"
+                      >
+                        <div>
+                          <span>{med.name}</span> <span className="text-xs text-gray-400 font-normal">({med.category})</span>
+                        </div>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${cfg.color}`}>
+                          {cfg.shortLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
             
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Dosage/Day</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Dosage ({newUnitLabel})</label>
               <input type="number" min={1} value={newDosage} onChange={e => setNewDosage(Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all" />
             </div>
             
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Quantity</label>
-              <input type="number" min={1} value={newQty} onChange={e => setNewQty(Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all" />
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Total Units</label>
+              <input type="number" min={1} value={newQty} onChange={e => setNewQty(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all" />
+              <p className="text-[10px] text-gray-400 mt-0.5 truncate">{newPackaging}</p>
             </div>
 
             <div className="md:col-span-3">
@@ -446,6 +479,7 @@ export default function CustomerDetailPage() {
                     <th className="py-3.5 px-4">Order ID</th>
                     <th className="py-3.5 px-4">Date</th>
                     <th className="py-3.5 px-4">Status</th>
+                    <th className="py-3.5 px-4">Medicines</th>
                     <th className="py-3.5 px-4 text-right">Amount</th>
                   </tr>
                 </thead>
@@ -455,6 +489,9 @@ export default function CustomerDetailPage() {
                       <td className="py-3.5 px-4 text-xs font-mono font-medium text-gray-600">#{o.id.slice(-6).toUpperCase()}</td>
                       <td className="py-3.5 px-4 text-sm">{new Date(o.createdAt).toLocaleDateString('en-IN')}</td>
                       <td className="py-3.5 px-4 text-xs font-semibold capitalize text-gray-700">{o.status}</td>
+                      <td className="py-3.5 px-4 text-xs text-gray-600">
+                        {o.items?.map((it: any) => it?.medicineName).filter(Boolean).join(', ') || 'N/A'}
+                      </td>
                       <td className="py-3.5 px-4 text-right font-bold text-gray-900">₹{o.totalAmount}</td>
                     </tr>
                   ))}
@@ -488,7 +525,7 @@ export default function CustomerDetailPage() {
                     type="number" 
                     min={1} 
                     value={editDosage} 
-                    onChange={e => setEditDosage(Number(e.target.value))} 
+                    onChange={e => setEditDosage(e.target.value === '' ? '' : Number(e.target.value))} 
                     className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none" 
                   />
                 </div>

@@ -375,11 +375,11 @@ export function buildCustomerRefills(cust: CustomerRecord): RefillRecordItem[] {
     });
 
     const refillDateStr = p.nextRefillDate || refillCalc.nextRefillDate.toISOString();
-    const diffDays = isSyrup
-      ? 1
-      : Math.ceil((new Date(refillDateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const diffDays = p.nextRefillDate
+      ? Math.ceil((new Date(p.nextRefillDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : refillCalc.daysRemaining;
 
-    let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = 'ok';
+    let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' | 'future' = refillCalc.urgency;
     if (diffDays <= 0) urgency = 'overdue';
     else if (diffDays <= 2) urgency = 'urgent';
     else if (diffDays <= 5) urgency = 'due_soon';

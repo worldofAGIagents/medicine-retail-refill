@@ -7,17 +7,25 @@ import {
   Users, RefreshCw, ClipboardList, Package, Plus, Upload,
   ArrowRight, Bell, Sparkles, UserPlus, Heart, CheckCircle2,
   TrendingUp, Phone, MapPin, Pill, Calendar, Clock, QrCode,
-  Printer, MessageCircle, AlertTriangle, Search, Filter, Receipt
+  Printer, MessageCircle, AlertTriangle, Search, Filter, Receipt,
+  Syringe, FlaskConical, Wind, Baby, IndianRupee, Eye, ChevronRight, X
 } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
-import { isSyrupMedicine } from '@/lib/refill-engine';
+import { isSyrupMedicine, calculateRefill } from '@/lib/refill-engine';
+import {
+  detectMedicineFormFactor,
+  parsePackDetails,
+  FORM_FACTORS,
+  MedicineFormFactor,
+} from '@/lib/medicine-classifier';
 import {
   getLocalCustomers,
   saveLocalCustomers,
   mergeCustomerLists,
   CUSTOMERS_UPDATED_EVENT,
 } from '@/lib/customer-sync';
+import { buildWhatsAppUrl, openWhatsAppDirect, getWhatsAppWebUrl, getWhatsAppAppUrl } from '@/lib/utils';
 
 interface PrescriptionItem {
   id: string;
@@ -26,11 +34,14 @@ interface PrescriptionItem {
   lastPurchaseQty?: number;
   nextRefillDate: string | null;
   customPackaging?: string;
+  unitType?: string;
+  bufferDays?: number;
   medicine: {
     id?: string;
     name: string;
     category: string;
     genericName?: string;
+    packagingType?: string;
     unitsPerPack?: number;
     mrp?: number;
   };
@@ -57,6 +68,7 @@ interface RefillCardItem {
   phone: string;
   village: string;
   condition: string;
+  medicineId?: string;
   medicineName: string;
   genericName?: string;
   dailyDosage: number;
@@ -65,20 +77,42 @@ interface RefillCardItem {
   daysRemaining: number;
   urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok';
   isSyrup?: boolean;
+  formFactor: MedicineFormFactor;
+  unitLabel: string;
+  dosageDetail: string;
 }
 
-function sanitizeCustomer(c: CustomerRecord): CustomerRecord {
-  const seenMeds = new Set<string>();
-  const cleanPrescriptions = (c.prescriptions || []).filter((p) => {
-    const medKey = (p.medicine?.name || (p.medicine as any)?.id || p.id || '').trim().toLowerCase();
-    if (!medKey || seenMeds.has(medKey)) return false;
-    seenMeds.add(medKey);
-    return true;
-  });
-  return {
-    ...c,
-    prescriptions: cleanPrescriptions,
+interface DashboardApiData {
+  totalCustomers: number;
+  upcomingRefills: number;
+  activePrescriptions: number;
+  pendingDeliveries: number;
+  refillMetrics?: {
+    overdue: number;
+    urgent: number;
+    dueSoon: number;
+    future: number;
   };
+  todaySales?: {
+    ordersCount: number;
+    totalRevenue: number;
+    cashRevenue: number;
+    upiRevenue: number;
+  };
+  conditionDistribution?: Record<string, number>;
+  formFactorDistribution?: Record<string, number>;
+  topMedicines?: Array<{ name: string; count: number; category: string }>;
+  recentOrders?: Array<{
+    id: string;
+    invoiceNo: string;
+    customerName: string;
+    customerPhone: string;
+    customerVillage: string;
+    totalAmount: number;
+    paymentMethod: string;
+    status: string;
+    createdAt: string;
+  }>;
 }
 
 export default function DashboardPage() {
@@ -88,14 +122,17 @@ export default function DashboardPage() {
     }
     return [];
   });
+  const [dashboardData, setDashboardData] = useState<DashboardApiData | null>(null);
   const [loading, setLoading] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return getLocalCustomers().length === 0;
     }
     return true;
   });
+  const [refreshing, setRefreshing] = useState(false);
   const [showOnboardModal, setShowOnboardModal] = useState(false);
-  const [refillFilter, setRefillFilter] = useState<'all' | 'urgent' | 'week' | 'later'>('all');
+  const [refillFilter, setRefillFilter] = useState<'all' | 'overdue' | 'urgent' | 'week' | 'insulin_syrup' | 'later'>('all');
+  const [formFactorFilter, setFormFactorFilter] = useState<'all' | MedicineFormFactor>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVillage, setSelectedVillage] = useState('All');
 
@@ -107,20 +144,29 @@ export default function DashboardPage() {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     lastFetchTimeRef.current = Date.now();
+    setRefreshing(true);
 
     try {
-      const res = await fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' });
-      const serverData = await res.json();
+      // 1. Fetch Customers
+      const resCust = await fetch(`/api/customers?t=${Date.now()}`, { cache: 'no-store' });
+      const serverData = await resCust.json();
       const rawSList = Array.isArray(serverData) ? serverData : [];
       const cleanMerged = mergeCustomerLists(rawSList as any, getLocalCustomers(), true);
       setCustomers(cleanMerged as any);
-      // Suppress broadcast so server sync does not re-trigger an event loop!
       saveLocalCustomers(cleanMerged, { source: 'server_sync', broadcast: false });
+
+      // 2. Fetch Dashboard Analytics
+      const resDash = await fetch(`/api/dashboard?t=${Date.now()}`, { cache: 'no-store' });
+      if (resDash.ok) {
+        const dData = await resDash.json();
+        setDashboardData(dData);
+      }
     } catch (e) {
       console.warn('Dashboard fetch server data error:', e);
     } finally {
       isFetchingRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -165,12 +211,11 @@ export default function DashboardPage() {
     };
   }, [fetchServerData]);
 
-  // Compute all refill items with live urgency & days countdown
+  // Compute all refill items with clinical form factors, dosages & countdowns
   const allRefills = useMemo<RefillCardItem[]>(() => {
     const items: RefillCardItem[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayMs = today.getTime();
 
     customers.forEach((cust) => {
       const village = cust.locality || (cust.address ? cust.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
@@ -179,29 +224,54 @@ export default function DashboardPage() {
       (cust.prescriptions || []).forEach((p) => {
         if (!p.medicine?.name) return;
 
-        const isSyrup = isSyrupMedicine({
+        const formFactor = detectMedicineFormFactor({
           name: p.medicine.name,
           genericName: p.medicine.genericName,
           category: p.medicine.category,
+          packagingType: p.medicine.packagingType,
+          unitType: p.unitType,
           customPackaging: p.customPackaging,
         });
 
-        let refillDateMs = todayMs + (isSyrup ? 1 : 15) * 86400000;
-        let dateStr = '';
-        if (p.nextRefillDate) {
-          const parsed = new Date(p.nextRefillDate).getTime();
-          if (!isNaN(parsed)) {
-            refillDateMs = parsed;
-            dateStr = p.nextRefillDate;
-          }
-        }
+        const packDetails = parsePackDetails({
+          name: p.medicine.name,
+          packagingType: p.medicine.packagingType,
+          unitsPerPack: p.medicine.unitsPerPack,
+          category: p.medicine.category,
+        });
 
-        if (!dateStr) {
-          const d = new Date(refillDateMs);
-          dateStr = d.toISOString();
-        }
+        const isSyrup = formFactor === 'syrup' || isSyrupMedicine({
+          name: p.medicine.name,
+          genericName: p.medicine.genericName,
+          category: p.medicine.category,
+          packagingType: p.medicine.packagingType,
+          unitType: p.unitType,
+          customPackaging: p.customPackaging,
+        });
 
-        const daysRemaining = Math.ceil((refillDateMs - todayMs) / (1000 * 60 * 60 * 24));
+        const purchaseDate = p.lastPurchaseDate ? new Date(p.lastPurchaseDate) : today;
+        const purchaseQty = p.lastPurchaseQty || packDetails.defaultQty;
+        const dailyDose = p.dailyDosage || packDetails.defaultDosage;
+        const bufferDays = p.bufferDays !== undefined ? p.bufferDays : packDetails.bufferDays;
+
+        const refillCalc = calculateRefill({
+          lastPurchaseDate: purchaseDate,
+          lastPurchaseQty: purchaseQty,
+          dailyDosage: dailyDose,
+          bufferDays,
+          medicineName: p.medicine.name,
+          genericName: p.medicine.genericName,
+          category: p.medicine.category,
+          packagingType: p.medicine.packagingType,
+          unitType: p.unitType,
+          customPackaging: p.customPackaging,
+          isSyrup,
+        });
+
+        let targetDateStr = p.nextRefillDate || refillCalc.nextRefillDate.toISOString();
+        let daysRemaining = p.nextRefillDate
+          ? Math.ceil((new Date(p.nextRefillDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          : refillCalc.daysRemaining;
 
         let urgency: 'overdue' | 'urgent' | 'due_soon' | 'ok' = 'ok';
         if (daysRemaining <= 0) urgency = 'overdue';
@@ -212,6 +282,14 @@ export default function DashboardPage() {
         const cleanMed = (p.medicine.name || '').trim().toLowerCase().replace(/\s+/g, '-');
         const stableId = `refill-${cleanPhone}-${cleanMed}`;
 
+        // Dosage detail formatting
+        let dosageDetail = `${dailyDose} ${packDetails.unitLabel}`;
+        if (p.customPackaging) {
+          dosageDetail += ` • ${p.customPackaging}`;
+        } else if (packDetails.defaultPackagingText) {
+          dosageDetail += ` • ${packDetails.defaultPackagingText}`;
+        }
+
         items.push({
           id: stableId,
           customerId: cust.id,
@@ -219,14 +297,18 @@ export default function DashboardPage() {
           phone: cust.phone,
           village,
           condition,
+          medicineId: p.medicine.id,
           medicineName: p.medicine.name,
           genericName: p.medicine.genericName,
-          dailyDosage: p.dailyDosage || 1,
+          dailyDosage: dailyDose,
           customPackaging: p.customPackaging,
-          nextRefillDateStr: dateStr,
+          nextRefillDateStr: targetDateStr,
           daysRemaining,
           urgency,
           isSyrup,
+          formFactor,
+          unitLabel: packDetails.unitLabel,
+          dosageDetail,
         });
       });
     });
@@ -274,6 +356,28 @@ export default function DashboardPage() {
     return Object.fromEntries(sortedVillages);
   }, [sortedVillages]);
 
+  // Form factor count distribution across active refills
+  const activeFormFactorCounts = useMemo(() => {
+    const counts: Record<MedicineFormFactor, number> = {
+      tablet: 0,
+      insulin: 0,
+      syrup: 0,
+      inhaler: 0,
+      drops: 0,
+      infant_milk: 0,
+    };
+
+    allRefills.forEach((r) => {
+      if (counts[r.formFactor] !== undefined) {
+        counts[r.formFactor]++;
+      } else {
+        counts.tablet++;
+      }
+    });
+
+    return counts;
+  }, [allRefills]);
+
   // Total unique active medicines across all patients
   const uniqueMedicinesCount = useMemo(() => {
     const set = new Set<string>();
@@ -285,10 +389,11 @@ export default function DashboardPage() {
     return set.size;
   }, [customers]);
 
-  // Urgent / action-needed count (<= 7 days)
-  const urgentCount = useMemo(() => {
-    return allRefills.filter((r) => r.daysRemaining <= 7).length;
-  }, [allRefills]);
+  // Urgent counts
+  const overdueCount = useMemo(() => allRefills.filter((r) => r.daysRemaining <= 0).length, [allRefills]);
+  const urgent12DaysCount = useMemo(() => allRefills.filter((r) => r.daysRemaining > 0 && r.daysRemaining <= 2).length, [allRefills]);
+  const weekCount = useMemo(() => allRefills.filter((r) => r.daysRemaining > 2 && r.daysRemaining <= 7).length, [allRefills]);
+  const insulinAndSyrupsCount = useMemo(() => allRefills.filter((r) => r.formFactor === 'insulin' || r.formFactor === 'syrup').length, [allRefills]);
 
   // Filtered refills for table
   const filteredRefills = useMemo(() => {
@@ -296,18 +401,24 @@ export default function DashboardPage() {
       // 1. Village filter
       if (selectedVillage !== 'All' && r.village !== selectedVillage) return false;
 
-      // 2. Tab filter
-      if (refillFilter === 'urgent' && r.daysRemaining > 2) return false;
+      // 2. Form Factor filter
+      if (formFactorFilter !== 'all' && r.formFactor !== formFactorFilter) return false;
+
+      // 3. Tab filter
+      if (refillFilter === 'overdue' && r.daysRemaining > 0) return false;
+      if (refillFilter === 'urgent' && (r.daysRemaining <= 0 || r.daysRemaining > 2)) return false;
       if (refillFilter === 'week' && (r.daysRemaining < 3 || r.daysRemaining > 7)) return false;
+      if (refillFilter === 'insulin_syrup' && r.formFactor !== 'insulin' && r.formFactor !== 'syrup') return false;
       if (refillFilter === 'later' && r.daysRemaining <= 7) return false;
 
-      // 3. Search query
+      // 4. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const match =
           r.customerName.toLowerCase().includes(q) ||
           r.phone.includes(q) ||
           r.medicineName.toLowerCase().includes(q) ||
+          (r.genericName || '').toLowerCase().includes(q) ||
           r.village.toLowerCase().includes(q) ||
           r.condition.toLowerCase().includes(q);
         if (!match) return false;
@@ -315,21 +426,22 @@ export default function DashboardPage() {
 
       return true;
     });
-  }, [allRefills, refillFilter, selectedVillage, searchQuery]);
+  }, [allRefills, refillFilter, formFactorFilter, selectedVillage, searchQuery]);
 
   // 1-Click WhatsApp Trigger
-  const handleSendWhatsApp = (item: RefillCardItem) => {
-    const cleanPhone = item.phone.replace(/[^0-9]/g, '').slice(-10);
+  const handleSendWhatsApp = (item: RefillCardItem, preferWeb = false) => {
     const dateFormatted = new Date(item.nextRefillDateStr).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
 
-    const daysText =
-      item.daysRemaining <= 0
-        ? 'आज समाप्त हो रही है'
-        : `${item.daysRemaining} दिन (${dateFormatted})`;
+    let daysText = `${item.daysRemaining} दिन (${dateFormatted})`;
+    if (item.daysRemaining <= 0) {
+      daysText = 'आज समाप्त हो रही है';
+    } else if (item.daysRemaining === 1) {
+      daysText = 'कल समाप्त हो रही है (1 दिन)';
+    }
 
     const template = item.daysRemaining <= 0 ? DEFAULT_TEMPLATES.overdueTemplate : DEFAULT_TEMPLATES.hindiTemplate;
     const message = renderTemplate(template, {
@@ -341,8 +453,7 @@ export default function DashboardPage() {
       phone: '843118 (Manoj Medical Hall)',
     });
 
-    const waUrl = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    openWhatsAppDirect(item.phone, message, preferWeb);
   };
 
   const todayDateString = new Date().toLocaleDateString('en-IN', {
@@ -376,6 +487,15 @@ export default function DashboardPage() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            <button
+              onClick={fetchServerData}
+              disabled={refreshing}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+              title="Refresh Live Data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-teal-600' : 'text-gray-500'}`} />
+              <span className="hidden sm:inline">Sync</span>
+            </button>
             <Link
               href="/billing"
               className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-xs transition-all cursor-pointer"
@@ -409,78 +529,212 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 4 Real Metric Cards */}
+        {/* 4 Real Metric Cards with Interactive Financial & Clinical Data */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1. Total Patients */}
+          {/* 1. Today's Store Retail Sales */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Today&apos;s Store Sales</p>
+                <p className="text-3xl font-extrabold text-gray-900 mt-1 font-heading flex items-center">
+                  <span className="text-2xl mr-0.5">₹</span>
+                  {dashboardData?.todaySales ? dashboardData.todaySales.totalRevenue.toLocaleString('en-IN') : '0'}
+                </p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    💵 ₹{dashboardData?.todaySales ? dashboardData.todaySales.cashRevenue.toLocaleString('en-IN') : '0'} Cash
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    📱 ₹{dashboardData?.todaySales ? dashboardData.todaySales.upiRevenue.toLocaleString('en-IN') : '0'} UPI
+                  </span>
+                </div>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span>{dashboardData?.todaySales?.ordersCount || 0} bills generated today</span>
+              <Link href="/billing" className="text-emerald-700 font-semibold hover:underline flex items-center">
+                New Bill <ChevronRight size={12} />
+              </Link>
+            </div>
+          </div>
+
+          {/* 2. Urgent Refill Action Needed */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Refill Action Needed</p>
+                <p className="text-3xl font-extrabold text-amber-600 mt-1 font-heading">
+                  {loading ? '—' : overdueCount + urgent12DaysCount}
+                </p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200">
+                    🚨 {overdueCount} Overdue
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                    ⚡ {urgent12DaysCount} Due in 1–2d
+                  </span>
+                </div>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span>Next 7 days: {weekCount} due</span>
+              <button
+                onClick={() => setRefillFilter('urgent')}
+                className="text-amber-700 font-semibold hover:underline flex items-center cursor-pointer"
+              >
+                Filter Urgent <ChevronRight size={12} />
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Chronic Patients Cohort */}
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chronic Patients</p>
-                <p className="text-3xl font-extrabold text-gray-900 mt-1 font-heading">
+                <p className="text-3xl font-extrabold text-teal-900 mt-1 font-heading">
                   {loading ? '—' : customers.length}
                 </p>
-                <p className="text-xs text-teal-700 font-medium mt-1 flex items-center gap-1">
-                  <span>BP, Sugar, Thyroid, Milk</span>
-                </p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
+                    BP &amp; Sugar
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
+                    Thyroid
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-pink-50 text-pink-700 border border-pink-200">
+                    Infant Care
+                  </span>
+                </div>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
                 <Users className="w-5 h-5" />
               </div>
             </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span>{Object.keys(villageCounts).length} villages covered</span>
+              <Link href="/customers" className="text-teal-700 font-semibold hover:underline flex items-center">
+                Patients Directory <ChevronRight size={12} />
+              </Link>
+            </div>
           </div>
 
-          {/* 2. Active Medicines Tracked */}
+          {/* 4. Clinical Form Factors in Circulation */}
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Medicines Tracked</p>
-                <p className="text-3xl font-extrabold text-gray-900 mt-1 font-heading">
-                  {loading ? '—' : uniqueMedicinesCount}
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Form Factors Tracked</p>
+                <p className="text-3xl font-extrabold text-indigo-900 mt-1 font-heading">
+                  {loading ? '—' : allRefills.length}
                 </p>
-                <p className="text-xs text-blue-700 font-medium mt-1 flex items-center gap-1">
-                  <span>Repeat prescription items</span>
-                </p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
+                    💊 {activeFormFactorCounts.tablet} Tab
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
+                    💉 {activeFormFactorCounts.insulin} Insulin
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                    🧪 {activeFormFactorCounts.syrup} Syrup
+                  </span>
+                </div>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                 <Pill className="w-5 h-5" />
               </div>
             </div>
-          </div>
-
-          {/* 3. Action Needed Soon (<= 7 Days) */}
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Action Needed Soon</p>
-                <p className="text-3xl font-extrabold text-amber-600 mt-1 font-heading">
-                  {loading ? '—' : urgentCount}
-                </p>
-                <p className="text-xs text-amber-700 font-medium mt-1 flex items-center gap-1">
-                  <span>Refills due in 0–7 days</span>
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
+            <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span>{uniqueMedicinesCount} unique products</span>
+              <button
+                onClick={() => setRefillFilter('insulin_syrup')}
+                className="text-indigo-700 font-semibold hover:underline flex items-center cursor-pointer"
+              >
+                View Liquids/Pens <ChevronRight size={12} />
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* 4. Villages Covered */}
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Villages Covered</p>
-                <p className="text-3xl font-extrabold text-indigo-900 mt-1 font-heading">
-                  {loading ? '—' : Object.keys(villageCounts).length}
-                </p>
-                <p className="text-xs text-indigo-700 font-medium mt-1 truncate max-w-[170px]">
-                  {Object.keys(villageCounts).slice(0, 3).join(', ') || 'Sarfuddinpur'}
-                </p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <MapPin className="w-5 h-5" />
-              </div>
-            </div>
+        {/* Clinical Form Factor Filter Chips */}
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 shadow-xs flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-teal-600" />
+              <span>Therapy Form Factor:</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 flex-wrap">
+            <button
+              onClick={() => setFormFactorFilter('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                formFactorFilter === 'all'
+                  ? 'bg-gray-900 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              All Types ({allRefills.length})
+            </button>
+            <button
+              onClick={() => setFormFactorFilter('tablet')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1 ${
+                formFactorFilter === 'tablet'
+                  ? 'bg-teal-700 text-white shadow-xs'
+                  : 'bg-teal-50 text-teal-800 border border-teal-200 hover:bg-teal-100'
+              }`}
+            >
+              <Pill className="w-3 h-3" />
+              <span>Tablets &amp; Caps ({activeFormFactorCounts.tablet})</span>
+            </button>
+            <button
+              onClick={() => setFormFactorFilter('insulin')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1 ${
+                formFactorFilter === 'insulin'
+                  ? 'bg-purple-700 text-white shadow-xs'
+                  : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
+              }`}
+            >
+              <Syringe className="w-3 h-3" />
+              <span>Insulin (IU) ({activeFormFactorCounts.insulin})</span>
+            </button>
+            <button
+              onClick={() => setFormFactorFilter('syrup')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1 ${
+                formFactorFilter === 'syrup'
+                  ? 'bg-blue-700 text-white shadow-xs'
+                  : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100'
+              }`}
+            >
+              <FlaskConical className="w-3 h-3" />
+              <span>Syrups (ml) ({activeFormFactorCounts.syrup})</span>
+            </button>
+            <button
+              onClick={() => setFormFactorFilter('inhaler')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1 ${
+                formFactorFilter === 'inhaler'
+                  ? 'bg-sky-700 text-white shadow-xs'
+                  : 'bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100'
+              }`}
+            >
+              <Wind className="w-3 h-3" />
+              <span>Inhalers ({activeFormFactorCounts.inhaler})</span>
+            </button>
+            <button
+              onClick={() => setFormFactorFilter('infant_milk')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1 ${
+                formFactorFilter === 'infant_milk'
+                  ? 'bg-pink-700 text-white shadow-xs'
+                  : 'bg-pink-50 text-pink-800 border border-pink-200 hover:bg-pink-100'
+              }`}
+            >
+              <Baby className="w-3 h-3" />
+              <span>Baby Milk ({activeFormFactorCounts.infant_milk})</span>
+            </button>
           </div>
         </div>
 
@@ -499,7 +753,7 @@ export default function DashboardPage() {
                     </span>
                   </h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Chronologically scheduled chronic medicines with 1-click WhatsApp alerts
+                    Clinical chronic dosing with 1-click WhatsApp alerts &amp; instant retail billing
                   </p>
                 </div>
                 <Link
@@ -525,34 +779,44 @@ export default function DashboardPage() {
                     All ({allRefills.length})
                   </button>
                   <button
-                    onClick={() => setRefillFilter('urgent')}
+                    onClick={() => setRefillFilter('overdue')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
-                      refillFilter === 'urgent'
+                      refillFilter === 'overdue'
                         ? 'bg-red-600 text-white'
                         : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
-                    Urgent (0–2d)
+                    Overdue ({overdueCount})
+                  </button>
+                  <button
+                    onClick={() => setRefillFilter('urgent')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                      refillFilter === 'urgent'
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    Urgent (1–2d) ({urgent12DaysCount})
                   </button>
                   <button
                     onClick={() => setRefillFilter('week')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
                       refillFilter === 'week'
-                        ? 'bg-amber-500 text-white'
+                        ? 'bg-yellow-600 text-white'
                         : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
-                    This Week (3–7d)
+                    This Week ({weekCount})
                   </button>
                   <button
-                    onClick={() => setRefillFilter('later')}
+                    onClick={() => setRefillFilter('insulin_syrup')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
-                      refillFilter === 'later'
-                        ? 'bg-emerald-600 text-white'
+                      refillFilter === 'insulin_syrup'
+                        ? 'bg-purple-700 text-white'
                         : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
-                    Next 30 Days
+                    💉 Insulin &amp; Syrups ({insulinAndSyrupsCount})
                   </button>
                 </div>
 
@@ -561,25 +825,33 @@ export default function DashboardPage() {
                   <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="Search patient, medicine..."
+                    placeholder="Search patient, medicine, village..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    className="w-full pl-8 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Refills Table */}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[650px] text-left text-sm border-collapse">
+              <table className="w-full min-w-[700px] text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                     <th className="py-3 px-5">Patient &amp; Village</th>
-                    <th className="py-3 px-4">Medicine &amp; Dosage</th>
+                    <th className="py-3 px-4">Medicine &amp; Clinical Dosage</th>
                     <th className="py-3 px-4 text-center">Next Refill</th>
                     <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-5 text-right">WhatsApp Action</th>
+                    <th className="py-3 px-5 text-right">Quick Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -625,7 +897,12 @@ export default function DashboardPage() {
                           <td className="py-3 px-5">
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <p className="font-semibold text-gray-900 text-xs sm:text-sm">{refill.customerName}</p>
+                                <Link
+                                  href={`/customers/${refill.customerId}`}
+                                  className="font-semibold text-gray-900 text-xs sm:text-sm hover:text-teal-700 hover:underline"
+                                >
+                                  {refill.customerName}
+                                </Link>
                                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
                                   {refill.condition}
                                 </span>
@@ -641,19 +918,46 @@ export default function DashboardPage() {
                             </div>
                           </td>
 
-                          {/* Medicine & Dosage */}
+                          {/* Medicine & Clinical Dosage */}
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <Pill className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                              {refill.formFactor === 'insulin' ? (
+                                <Syringe className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                              ) : refill.formFactor === 'syrup' ? (
+                                <FlaskConical className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              ) : refill.formFactor === 'inhaler' ? (
+                                <Wind className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                              ) : refill.formFactor === 'infant_milk' ? (
+                                <Baby className="w-3.5 h-3.5 text-pink-600 shrink-0" />
+                              ) : (
+                                <Pill className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                              )}
                               <span className="font-semibold text-gray-800 text-xs sm:text-sm">{refill.medicineName}</span>
-                              {refill.isSyrup && (
-                                <span className="text-[9px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-1.5 py-0.2 rounded shadow-2xs">
-                                  Syrup • Next Day
+                              
+                              {/* Form factor badge */}
+                              {refill.formFactor === 'insulin' && (
+                                <span className="text-[9px] bg-purple-100 text-purple-900 border border-purple-300 font-bold px-1.5 py-0.2 rounded">
+                                  💉 Insulin • IU
+                                </span>
+                              )}
+                              {refill.formFactor === 'syrup' && (
+                                <span className="text-[9px] bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.2 rounded">
+                                  🧪 Syrup • ml
+                                </span>
+                              )}
+                              {refill.formFactor === 'inhaler' && (
+                                <span className="text-[9px] bg-sky-100 text-sky-900 border border-sky-300 font-bold px-1.5 py-0.2 rounded">
+                                  💨 Inhaler
+                                </span>
+                              )}
+                              {refill.formFactor === 'infant_milk' && (
+                                <span className="text-[9px] bg-pink-100 text-pink-900 border border-pink-300 font-bold px-1.5 py-0.2 rounded">
+                                  🍼 Infant Milk
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 mt-0.5 pl-5">
-                              {refill.dailyDosage} dose/day {refill.customPackaging ? `• ${refill.customPackaging}` : ''}
+                            <p className="text-[11px] text-gray-500 mt-0.5 pl-5">
+                              {refill.dosageDetail}
                             </p>
                           </td>
 
@@ -672,38 +976,48 @@ export default function DashboardPage() {
                           {/* Status / Countdown Badge */}
                           <td className="py-3 px-4 text-center">
                             <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                 isOverdue
                                   ? 'bg-red-100 text-red-700 border border-red-200'
                                   : isUrgent
-                                  ? 'bg-red-50 text-red-600 border border-red-200 animate-pulse'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
                                   : isDueSoon
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
                                   : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               }`}
                             >
                               {isOverdue
                                 ? `${Math.abs(refill.daysRemaining)}d overdue`
-                                : refill.isSyrup && refill.daysRemaining === 1
-                                ? 'Next Day (Tomorrow)'
+                                : refill.daysRemaining === 1
+                                ? 'Tomorrow (1 day)'
                                 : isUrgent
                                 ? `In ${refill.daysRemaining} days (Urgent)`
                                 : isDueSoon
                                 ? `In ${refill.daysRemaining} days`
-                                : 'Stock Healthy'}
+                                : `Healthy (${refill.daysRemaining}d)`}
                             </span>
                           </td>
 
-                          {/* 1-Click WhatsApp Reminder */}
+                          {/* Actions: 1-Click WhatsApp + 1-Click Retail Bill */}
                           <td className="py-3 px-5 text-right">
-                            <button
-                              onClick={() => handleSendWhatsApp(refill)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold transition-all hover:shadow-xs cursor-pointer"
-                              title="Send WhatsApp refill alert in Hindi"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>WhatsApp</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleSendWhatsApp(refill)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold transition-all hover:shadow-xs cursor-pointer"
+                                title="Send WhatsApp refill alert in Hindi"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>WhatsApp</span>
+                              </button>
+                              <Link
+                                href={`/billing?phone=${refill.phone}&name=${encodeURIComponent(refill.customerName)}&village=${encodeURIComponent(refill.village)}&customerId=${refill.customerId}${refill.medicineId ? `&medId=${refill.medicineId}` : ''}`}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold transition-all hover:shadow-xs cursor-pointer"
+                                title="Open Billing with patient & medicine preloaded"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>+ Bill</span>
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -714,7 +1028,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Right Column (1/3 width): Village Breakdown & Quick Roster */}
+          {/* Right Column (1/3 width): Village Breakdown, Live Sales & Clinical Stats */}
           <div className="space-y-5">
             {/* Village Delivery Coverage Card */}
             <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
@@ -726,14 +1040,14 @@ export default function DashboardPage() {
                 {selectedVillage !== 'All' && (
                   <button
                     onClick={() => setSelectedVillage('All')}
-                    className="text-[10px] font-semibold text-teal-700 hover:underline"
+                    className="text-[10px] font-semibold text-teal-700 hover:underline cursor-pointer"
                   >
                     Reset Filter
                   </button>
                 )}
               </div>
               <p className="text-xs text-gray-400 mb-3">
-                Patients distributed across 10–20 KM rural radius around Sarfuddinpur
+                Click any village to filter refills across Sarfuddinpur &amp; Bochahan rural perimeter
               </p>
 
               {Object.keys(villageCounts).length === 0 ? (
@@ -741,14 +1055,14 @@ export default function DashboardPage() {
                   No village data recorded yet
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {sortedVillages.map(([vil, count]) => {
                     const isSelected = selectedVillage === vil;
                     return (
                       <button
                         key={vil}
                         onClick={() => setSelectedVillage(isSelected ? 'All' : vil)}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                        className={`w-full flex items-center justify-between p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-xs'
                             : 'bg-gray-50/70 border-gray-100 text-gray-700 hover:bg-gray-100/70'
@@ -758,7 +1072,7 @@ export default function DashboardPage() {
                           <span className="w-2 h-2 rounded-full bg-amber-500" />
                           <span>{vil}</span>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800 text-[11px] font-bold">
+                        <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800 text-[10px] font-bold">
                           {count} patient{count > 1 ? 's' : ''}
                         </span>
                       </button>
@@ -768,7 +1082,159 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Quick Actions Card */}
+            {/* Recent Store Invoices (Live from Billing & Orders) */}
+            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-gray-900 font-heading flex items-center gap-1.5">
+                  <Receipt className="w-4 h-4 text-emerald-600" />
+                  <span>Recent Store Bills</span>
+                </h3>
+                <Link href="/billing" className="text-xs font-semibold text-emerald-700 hover:underline">
+                  Billing POS →
+                </Link>
+              </div>
+
+              {!dashboardData?.recentOrders || dashboardData.recentOrders.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-400 bg-gray-50 rounded-xl">
+                  No bills created today yet.
+                </div>
+              ) : (
+                <div className="space-y-2.5 divide-y divide-gray-50">
+                  {dashboardData.recentOrders.slice(0, 5).map((ord) => (
+                    <div key={ord.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-gray-900 truncate">{ord.customerName}</p>
+                          <span className="text-[9px] font-mono bg-gray-100 text-gray-600 px-1 py-0.2 rounded">
+                            {ord.invoiceNo}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 truncate">
+                          📍 {ord.customerVillage} • {new Date(ord.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-bold text-gray-900 font-mono">
+                          ₹{ord.totalAmount.toLocaleString('en-IN')}
+                        </p>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                          (ord.paymentMethod || '').toLowerCase() === 'upi'
+                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
+                          {ord.paymentMethod.toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Therapy Form Factor Distribution */}
+            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs space-y-3">
+              <h3 className="text-sm font-bold text-gray-900 font-heading flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-teal-600" />
+                <span>Therapy Formulation Split</span>
+              </h3>
+              <p className="text-xs text-gray-400">
+                Clinical dosages calculated by IU for insulin, ml for syrups, and puffs for inhalers
+              </p>
+
+              <div className="space-y-2 pt-1">
+                {/* Tablets */}
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="flex items-center gap-1 text-teal-800">
+                      <Pill size={13} /> Tablets &amp; Capsules
+                    </span>
+                    <span className="font-mono text-gray-600">{activeFormFactorCounts.tablet}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-teal-600 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${allRefills.length > 0 ? (activeFormFactorCounts.tablet / allRefills.length) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Insulin */}
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="flex items-center gap-1 text-purple-800">
+                      <Syringe size={13} /> Insulin Vials &amp; Pens (IU)
+                    </span>
+                    <span className="font-mono text-gray-600">{activeFormFactorCounts.insulin}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-purple-600 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${allRefills.length > 0 ? (activeFormFactorCounts.insulin / allRefills.length) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Syrups */}
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="flex items-center gap-1 text-blue-800">
+                      <FlaskConical size={13} /> Syrups &amp; Suspensions (ml)
+                    </span>
+                    <span className="font-mono text-gray-600">{activeFormFactorCounts.syrup}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${allRefills.length > 0 ? (activeFormFactorCounts.syrup / allRefills.length) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Inhalers */}
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="flex items-center gap-1 text-sky-800">
+                      <Wind size={13} /> Inhalers &amp; Respules
+                    </span>
+                    <span className="font-mono text-gray-600">{activeFormFactorCounts.inhaler}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-sky-600 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${allRefills.length > 0 ? (activeFormFactorCounts.inhaler / allRefills.length) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Infant Milk */}
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="flex items-center gap-1 text-pink-800">
+                      <Baby size={13} /> Infant Formula &amp; Milk
+                    </span>
+                    <span className="font-mono text-gray-600">{activeFormFactorCounts.infant_milk}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-pink-500 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${allRefills.length > 0 ? (activeFormFactorCounts.infant_milk / allRefills.length) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Pharmacy Quick Tools */}
             <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
               <h3 className="text-sm font-bold text-gray-900 font-heading mb-3">Pharmacy Quick Tools</h3>
               <div className="space-y-2.5">
@@ -796,7 +1262,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="text-xs font-bold">Shop Medicine Catalog</p>
-                    <p className="text-[11px] text-blue-700">9,259 medicines with MRP &amp; strip rates</p>
+                    <p className="text-[11px] text-blue-700">9,259 medicines with permanent MRP editing</p>
                   </div>
                 </Link>
 
@@ -826,58 +1292,6 @@ export default function DashboardPage() {
                   </div>
                 </Link>
               </div>
-            </div>
-
-            {/* Enrolled Chronic Patients Mini Roster */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-gray-900 font-heading">Enrolled Patients</h3>
-                <Link href="/customers" className="text-xs font-semibold text-teal-600 hover:text-teal-700">
-                  View all ({customers.length})
-                </Link>
-              </div>
-
-              {customers.length === 0 ? (
-                <div className="text-center py-6 px-3 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-                  <Users className="w-6 h-6 text-gray-300 mx-auto mb-1" />
-                  <p className="text-xs font-semibold text-gray-700">No Patients Enrolled Yet</p>
-                </div>
-              ) : (
-                <div className="space-y-2.5 divide-y divide-gray-50">
-                  {customers.slice(0, 5).map((cust) => {
-                    const initials = cust.name
-                      .split(' ')
-                      .filter(Boolean)
-                      .map((n) => n[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase();
-
-                    const village = cust.locality || (cust.address ? cust.address.replace(/गाँव:?\s*/i, '').split(',')[0].trim() : 'Sarfuddinpur');
-
-                    return (
-                      <div key={`patient-${cust.phone || cust.id}`} className="pt-2 first:pt-0 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-[10px] shrink-0">
-                            {initials || 'CU'}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-gray-900 truncate">{cust.name}</p>
-                            <p className="text-[10px] text-gray-400 truncate">
-                              📍 {village} • {cust.prescriptions?.length || 0} med(s)
-                            </p>
-                          </div>
-                        </div>
-                        {cust.primaryCondition && (
-                          <span className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                            {cust.primaryCondition}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
         </div>

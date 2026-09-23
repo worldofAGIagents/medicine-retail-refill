@@ -7,6 +7,7 @@ import {
   ChevronDown, X, Edit3, PackageCheck, Milk, Sparkles, Filter
 } from 'lucide-react';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import { detectMedicineFormFactor, parsePackDetails, FORM_FACTORS } from '@/lib/medicine-classifier';
 import {
   getLocalCustomers,
   saveLocalCustomers,
@@ -301,20 +302,35 @@ export default function PrescriptionsPage() {
     setMedSearch(med.name);
     setMedDropdownOpen(false);
 
-    if (isSyrupMedicine(med)) {
+    const pack = parsePackDetails(med);
+    if (pack.formFactor === 'insulin') {
+      setCustomUnitType('units');
+      setDosage(pack.defaultDosage);
+      setQty(pack.defaultQty);
+      setCustomPackagingText(pack.defaultPackagingText);
+      setCustomUnitsPerPack(pack.unitsPerPack);
+      setBufferDays(pack.bufferDays);
+    } else if (pack.formFactor === 'syrup') {
       setCustomUnitType('ml');
-      setDosage(10); // 10 ml daily
-      setQty(med.unitsPerPack > 1 ? med.unitsPerPack : 100);
-      setCustomPackagingText(`1 Bottle (${med.unitsPerPack > 1 ? med.unitsPerPack + 'ml' : 'Syrup'})`);
-      setCustomUnitsPerPack(med.unitsPerPack || 1);
-      setBufferDays(0);
-    } else if (med.category === 'Infant Milk') {
+      setDosage(pack.defaultDosage);
+      setQty(pack.defaultQty);
+      setCustomPackagingText(pack.defaultPackagingText);
+      setCustomUnitsPerPack(pack.unitsPerPack);
+      setBufferDays(pack.bufferDays);
+    } else if (pack.formFactor === 'inhaler') {
+      setCustomUnitType('puffs');
+      setDosage(pack.defaultDosage);
+      setQty(pack.defaultQty);
+      setCustomPackagingText(pack.defaultPackagingText);
+      setCustomUnitsPerPack(pack.unitsPerPack);
+      setBufferDays(pack.bufferDays);
+    } else if (pack.formFactor === 'infant_milk') {
       setCustomUnitType('grams');
-      setDosage(40); // 40 grams / day default for infant milk
-      setQty(med.unitsPerPack || 400); // 1 tin (400g)
-      setCustomPackagingText(`${med.unitsPerPack || 400}g Tin`);
-      setCustomUnitsPerPack(med.unitsPerPack || 400);
-      setBufferDays(2);
+      setDosage(pack.defaultDosage);
+      setQty(pack.defaultQty);
+      setCustomPackagingText(pack.defaultPackagingText);
+      setCustomUnitsPerPack(pack.unitsPerPack);
+      setBufferDays(pack.bufferDays);
     } else {
       setCustomUnitType('tablets');
       setDosage(1);

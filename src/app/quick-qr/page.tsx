@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { downloadPaymentQrImage, sharePaymentQrViaWhatsApp } from '@/lib/invoice-generator';
+import { buildWhatsAppUrl, openWhatsAppDirect, getWhatsAppWebUrl, getWhatsAppAppUrl } from '@/lib/utils';
 
 export default function QuickQrPage() {
   const [amount, setAmount] = useState<string>('150');
@@ -77,14 +78,9 @@ export default function QuickQrPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShareWhatsApp = () => {
-    const cleanDigits = customerPhone.replace(/[^0-9]/g, '');
-    const recipient = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
+  const handleShareWhatsApp = (preferWeb = false) => {
     const msg = `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Tap link to pay instantly via GPay / PhonePe / Paytm / BHIM:\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`;
-    const waUrl = recipient
-      ? `https://wa.me/${recipient}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    openWhatsAppDirect(customerPhone, msg, preferWeb);
   };
 
   const handleShareQrImage = async () => {

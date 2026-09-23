@@ -2,7 +2,8 @@
 
 import { DashboardLayout } from '@/components/layout';
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Pill, AlertTriangle, CheckCircle, X, Package, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
+import { Search, Plus, Pill, AlertTriangle, CheckCircle, X, Package, ChevronLeft, ChevronRight, Layers, Edit2, Check, Loader2 } from 'lucide-react';
+import { detectMedicineFormFactor, FORM_FACTORS } from '@/lib/medicine-classifier';
 
 interface MedicineItem {
   id: string;
@@ -31,6 +32,52 @@ export default function MedicinesPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalMedicines, setTotalMedicines] = useState(0);
+
+  const [editingMrpId, setEditingMrpId] = useState<string | null>(null);
+  const [editingMrpValue, setEditingMrpValue] = useState<string>('');
+  const [isSavingMrp, setIsSavingMrp] = useState(false);
+  const [mrpFeedback, setMrpFeedback] = useState<string | null>(null);
+
+  const handleStartEditMrp = (med: MedicineItem) => {
+    setEditingMrpId(med.id);
+    setEditingMrpValue(String(med.mrp));
+  };
+
+  const handleCancelEditMrp = () => {
+    setEditingMrpId(null);
+    setEditingMrpValue('');
+  };
+
+  const handleSaveMrp = async (medId: string, medName: string) => {
+    const parsed = parseFloat(editingMrpValue);
+    if (isNaN(parsed) || parsed < 0) {
+      alert('Please enter a valid positive MRP');
+      return;
+    }
+
+    setIsSavingMrp(true);
+    try {
+      const res = await fetch(`/api/medicines/${medId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mrp: parsed }),
+      });
+
+      if (!res.ok) throw new Error('Failed to update MRP');
+      
+      // Update local array
+      setMedicines((prev) =>
+        prev.map((m) => (m.id === medId ? { ...m, mrp: parsed } : m))
+      );
+      setMrpFeedback(`MRP for "${medName}" updated to ₹${parsed.toFixed(2)}`);
+      setTimeout(() => setMrpFeedback(null), 3000);
+      setEditingMrpId(null);
+    } catch (err: any) {
+      alert(err.message || 'Error updating MRP');
+    } finally {
+      setIsSavingMrp(false);
+    }
+  };
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -216,6 +263,13 @@ export default function MedicinesPage() {
 
         {/* Table Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          {mrpFeedback && (
+            <div className="m-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+              <span>{mrpFeedback}</span>
+            </div>
+          )}
+
           {loading ? (
             <div className="p-12 text-center text-gray-400">Loading medicines...</div>
           ) : medicines.length === 0 ? (
@@ -231,15 +285,24 @@ export default function MedicinesPage() {
                   <thead>
                     <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       <th className="py-3.5 px-6">Medicine &amp; Brand</th>
-                      <th className="py-3.5 px-4">Condition / Category</th>
+                      <th className="py-3.5 px-4">Condition &amp; Form</th>
                       <th className="py-3.5 px-4">Salt / Generic</th>
                       <th className="py-3.5 px-4">Packaging Size</th>
                       <th className="py-3.5 px-4">MRP (₹)</th>
-                      <th className="py-3.5 px-4 text-center">Refill Status</th>
+                      <th className="py-3.5 px-4 text-center">Catalog Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {medicines.map((m) => {
+                      const formFactor = detectMedicineFormFactor({
+                        name: m.name,
+                        genericName: m.genericName,
+                        category: m.category,
+                        packagingType: m.packagingType,
+                      });
+                      const formCfg = FORM_FACTORS[formFactor];
+                      const isEditing = editingMrpId === m.id;
+
                       return (
                         <tr key={m.id} className="hover:bg-gray-50/60 transition-colors">
                           <td className="py-3.5 px-6">
@@ -261,33 +324,90 @@ export default function MedicinesPage() {
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                              m.category === 'Infant Milk' ? 'bg-pink-50 text-pink-700 border border-pink-200' :
-                              m.category === 'Diabetes' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                              m.category === 'Blood Pressure' || m.category === 'BP' ? 'bg-red-50 text-red-700 border border-red-200' :
-                              m.category === 'Thyroid' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                              m.category === 'Heart' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                              'bg-gray-50 text-gray-700 border border-gray-200'
-                            }`}>
-                              {m.category}
-                            </span>
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className={`px-2 py-0.5 rounded-lg text-xs font-semibold ${
+                                m.category === 'Infant Milk' ? 'bg-pink-50 text-pink-700 border border-pink-200' :
+                                m.category === 'Diabetes' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                m.category === 'Blood Pressure' || m.category === 'BP' ? 'bg-red-50 text-red-700 border border-red-200' :
+                                m.category === 'Thyroid' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                m.category === 'Heart' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                'bg-gray-50 text-gray-700 border border-gray-200'
+                              }`}>
+                                {m.category}
+                              </span>
+                              <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded border ${formCfg.color}`}>
+                                {formCfg.shortLabel}
+                              </span>
+                            </div>
                           </td>
                           <td className="py-3.5 px-4 text-gray-600 text-xs font-medium max-w-[200px] truncate">
                             {m.genericName || m.saltComposition || '-'}
                           </td>
                           <td className="py-3.5 px-4">
                             <p className="text-xs font-semibold text-gray-800">
-                              {m.unitsPerPack} {m.packagingType === 'tin' ? 'g Tin' : m.packagingType === 'bottle' ? 'tabs/bottle' : 'tabs/strip'}
+                              {m.unitsPerPack} {m.packagingType === 'tin' ? 'g Tin' : m.packagingType === 'bottle' ? (formFactor === 'syrup' ? 'ml Bottle' : 'tabs/bottle') : (formFactor === 'insulin' ? 'IU' : 'tabs/strip')}
                             </p>
                             <p className="text-[10px] text-gray-400">{m.packsPerBox} per box</p>
                           </td>
-                          <td className="py-3.5 px-4 font-bold text-gray-900 text-sm">
-                            ₹{m.mrp}
+                          <td className="py-3.5 px-4">
+                            {isEditing ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-gray-500">₹</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editingMrpValue}
+                                  onChange={(e) => setEditingMrpValue(e.target.value)}
+                                  className="w-20 px-2 py-1 text-xs font-bold bg-white border border-teal-500 rounded-lg outline-none focus:ring-2 focus:ring-teal-500/20"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveMrp(m.id, m.name);
+                                    if (e.key === 'Escape') handleCancelEditMrp();
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveMrp(m.id, m.name)}
+                                  disabled={isSavingMrp}
+                                  className="p-1 bg-teal-600 hover:bg-teal-700 text-white rounded-md cursor-pointer disabled:opacity-50"
+                                  title="Save MRP permanently"
+                                >
+                                  {isSavingMrp ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditMrp}
+                                  className="p-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-md cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 group">
+                                <span className="font-bold text-gray-900 text-sm">
+                                  ₹{Number(m.mrp).toFixed(2)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditMrp(m)}
+                                  className="opacity-60 group-hover:opacity-100 p-1 text-gray-400 hover:text-teal-700 hover:bg-teal-50 rounded-md transition-all cursor-pointer"
+                                  title="Edit MRP permanently"
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
-                              <CheckCircle className="w-3 h-3 text-teal-600" /> Active Catalog
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditMrp(m)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-50 hover:bg-teal-50 text-gray-700 hover:text-teal-700 border border-gray-200 hover:border-teal-200 transition-colors cursor-pointer"
+                            >
+                              <Edit2 size={12} /> Edit MRP
+                            </button>
                           </td>
                         </tr>
                       );

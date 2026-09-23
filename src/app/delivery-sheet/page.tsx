@@ -15,6 +15,7 @@ import {
   mergeRefillLists,
   CUSTOMERS_UPDATED_EVENT,
 } from '@/lib/customer-sync';
+import { buildWhatsAppUrl } from '@/lib/utils';
 
 interface RefillItem {
   id: string;
@@ -291,7 +292,6 @@ export default function DeliverySheetPage() {
       alert('कृपया राइडर का व्हाट्सएप नंबर दर्ज करें (Please enter rider WhatsApp number)');
       return;
     }
-    const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
     const msg = generateRiderRouteMessage(displayedItems, selectedVillage, riderName);
 
     try {
@@ -299,7 +299,7 @@ export default function DeliverySheetPage() {
       localStorage.setItem('manoj_rider_phone', riderPhone);
     } catch {}
 
-    const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`;
+    const url = buildWhatsAppUrl(riderPhone, msg);
     window.open(url, '_blank');
   };
 
@@ -611,9 +611,7 @@ export default function DeliverySheetPage() {
                               <span>{item.customer.phone}</span>
                             </a>
                             <a
-                              href={`https://wa.me/91${item.customer.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                                `नमस्ते ${item.customer.name} जी, आपकी दवाई मनोज मेडिकल हॉल (सरफुद्दीनपुर) से डिलीवरी के लिए निकल रही है। कुल बिल: ₹${itemBill}। क्या आप घर पर हैं?`
-                              )}`}
+                              href={buildWhatsAppUrl(item.customer.phone, `नमस्ते ${item.customer.name} जी, आपकी दवाई मनोज मेडिकल हॉल (सरफुद्दीनपुर) से डिलीवरी के लिए निकल रही है। कुल बिल: ₹${itemBill}। क्या आप घर पर हैं?`)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="px-1.5 py-0.5 rounded bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-[10px] font-bold transition-colors inline-flex items-center gap-0.5"

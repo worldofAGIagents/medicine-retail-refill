@@ -10,12 +10,14 @@ import {
 } from 'lucide-react';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
 import { isSyrupMedicine } from '@/lib/refill-engine';
+import { detectMedicineFormFactor } from '@/lib/medicine-classifier';
 import {
   getLocalCustomers,
   mergeRefillLists,
   CUSTOMERS_UPDATED_EVENT,
   CustomerRecord,
 } from '@/lib/customer-sync';
+import { buildWhatsAppUrl } from '@/lib/utils';
 
 interface RefillItem {
   id: string;
@@ -164,6 +166,28 @@ export default function RefillsPage() {
           customPackaging: r.customPackaging,
         })
       );
+    }
+    if (catQuery === 'insulin') {
+      const ff = detectMedicineFormFactor({
+        name: r.medicine?.name,
+        genericName: r.medicine?.genericName,
+        category: r.medicine?.category,
+        packagingType: (r.medicine as any)?.packagingType,
+        unitType: r.unitType,
+        customPackaging: r.customPackaging,
+      });
+      return ff === 'insulin' || (r.medicine?.name || '').toLowerCase().includes('insulin');
+    }
+    if (catQuery === 'inhaler' || catQuery === 'inhalers') {
+      const ff = detectMedicineFormFactor({
+        name: r.medicine?.name,
+        genericName: r.medicine?.genericName,
+        category: r.medicine?.category,
+        packagingType: (r.medicine as any)?.packagingType,
+        unitType: r.unitType,
+        customPackaging: r.customPackaging,
+      });
+      return ff === 'inhaler' || (r.medicine?.name || '').toLowerCase().includes('inhaler');
     }
     const medCat = r.medicine?.category?.toLowerCase() || '';
     if (catQuery === 'bp') return medCat.includes('bp') || medCat.includes('blood pressure');
@@ -338,10 +362,7 @@ export default function RefillsPage() {
         address: current.customer.address || '',
       });
 
-      const cleanDigits = current.customer.phone.replace(/[^0-9]/g, '');
-      const phone = cleanDigits.length === 10 ? `91${cleanDigits}` : cleanDigits;
-      const encodedMsg = encodeURIComponent(message);
-      const url = `https://wa.me/${phone}?text=${encodedMsg}`;
+      const url = buildWhatsAppUrl(current.customer.phone, message);
 
       window.open(url, '_blank', 'noopener,noreferrer');
 
@@ -506,7 +527,7 @@ export default function RefillsPage() {
     );
   };
 
-  const categories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Syrup'];
+  const categories = ['All', 'Diabetes', 'BP', 'Thyroid', 'Cholesterol', 'Infant Milk', 'Syrup', 'Insulin', 'Inhalers'];
 
   return (
     <DashboardLayout>
