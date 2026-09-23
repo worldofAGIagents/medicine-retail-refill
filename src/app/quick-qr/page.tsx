@@ -10,7 +10,15 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { downloadPaymentQrImage, sharePaymentQrViaWhatsApp } from '@/lib/invoice-generator';
-import { buildWhatsAppUrl, openWhatsAppDirect, getWhatsAppWebUrl, getWhatsAppAppUrl } from '@/lib/utils';
+import {
+  buildWhatsAppUrl,
+  openWhatsAppDirect,
+  getWhatsAppWebUrl,
+  getWhatsAppApiUrl,
+  getWhatsAppAppUrl,
+  getWhatsAppNativeUrl,
+  cleanWhatsAppNumber
+} from '@/lib/utils';
 
 export default function QuickQrPage() {
   const [amount, setAmount] = useState<string>('150');
@@ -78,9 +86,10 @@ export default function QuickQrPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShareWhatsApp = (preferWeb = false) => {
-    const msg = `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Tap link to pay instantly via GPay / PhonePe / Paytm / BHIM:\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`;
-    openWhatsAppDirect(customerPhone, msg, preferWeb);
+  const whatsAppMsg = `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Tap link to pay instantly via GPay / PhonePe / Paytm / BHIM:\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`;
+
+  const handleShareWhatsApp = (preferWeb?: boolean) => {
+    openWhatsAppDirect(customerPhone, whatsAppMsg, preferWeb);
   };
 
   const handleShareQrImage = async () => {
@@ -439,33 +448,56 @@ export default function QuickQrPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleShareWhatsApp}
-                    disabled={numAmount <= 0}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold text-xs border border-gray-200 transition-all disabled:opacity-40 cursor-pointer"
-                    title="Send plain text UPI payment link"
+                {/* Direct 1-Click WhatsApp Links (Zero Popup Blocker Suppression) */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <a
+                    href={getWhatsAppWebUrl(customerPhone, whatsAppMsg)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
+                    title="Directly opens WhatsApp Web chat tab on PC/Mac with phone number included"
                   >
-                    <Share2 className="w-3.5 h-3.5 text-gray-500" />
-                    <span>WhatsApp Link</span>
-                  </button>
+                    <Share2 size={12} className="text-emerald-600 shrink-0" />
+                    <span>WhatsApp Web</span>
+                  </a>
 
+                  <a
+                    href={getWhatsAppNativeUrl(customerPhone, whatsAppMsg)}
+                    className="py-2 px-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
+                    title="Directly opens native WhatsApp Desktop app on Mac/PC"
+                  >
+                    <Smartphone size={12} className="text-emerald-600 shrink-0" />
+                    <span>Desktop App</span>
+                  </a>
+
+                  <a
+                    href={getWhatsAppApiUrl(customerPhone, whatsAppMsg)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
+                    title="Directly opens WhatsApp Click-to-Chat dispatcher"
+                  >
+                    <MessageCircle size={12} className="text-emerald-600 shrink-0" />
+                    <span>WhatsApp API</span>
+                  </a>
+                </div>
+
+                <div className="pt-1">
                   <button
                     type="button"
                     onClick={handleCopyLink}
                     disabled={numAmount <= 0}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold text-xs border border-gray-200 transition-all disabled:opacity-40 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold text-xs border border-gray-200 transition-all disabled:opacity-40 cursor-pointer"
                   >
                     {copied ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-green-600" />
-                        <span className="text-green-700 font-bold">Copied!</span>
+                        <span className="text-green-700 font-bold">UPI Link Copied!</span>
                       </>
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5 text-gray-500" />
-                        <span>Copy Link</span>
+                        <span>Copy UPI Payment Link</span>
                       </>
                     )}
                   </button>

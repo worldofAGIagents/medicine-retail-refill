@@ -75,15 +75,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'customerId and medicineId are required' }, { status: 400 });
     }
 
-    const effectiveQty = Number(lastPurchaseQty || quantity) || 30;
+    const med = await db.medicine.findUnique({ where: { id: medicineId } });
+    const fallbackQty = (med?.unitsPerPack && med.unitsPerPack > 0) ? med.unitsPerPack : 10;
+    const passedQty = (lastPurchaseQty !== undefined && lastPurchaseQty !== null && lastPurchaseQty !== '') 
+      ? Number(lastPurchaseQty) 
+      : (quantity !== undefined && quantity !== null && quantity !== '' ? Number(quantity) : null);
+    const effectiveQty = (passedQty !== null && !isNaN(passedQty) && passedQty > 0) ? passedQty : fallbackQty;
     const effectiveDosage = Number(dailyDosage) || 1;
-    const effectivePackaging = customPackaging || packaging || '30 Tablets';
+    
+    const defaultPackText = med?.packagingType ? `${med.packagingType}` : `${effectiveQty} ${unitType || 'tablets'}`;
+    const effectivePackaging = (customPackaging && String(customPackaging).trim()) 
+      || (packaging && String(packaging).trim()) 
+      || defaultPackText;
     const effectivePurchaseDate = lastPurchaseDate ? new Date(lastPurchaseDate) : new Date();
 
     let nextRefillDate = body.nextRefillDate;
     
     if (!nextRefillDate) {
-      const med = await db.medicine.findUnique({ where: { id: medicineId } });
       const calc = calculateRefill({
         lastPurchaseDate: effectivePurchaseDate,
         lastPurchaseQty: effectiveQty,

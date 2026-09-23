@@ -173,8 +173,8 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
       category: finalItemCategory,
       formFactor: packDetails.formFactor,
       unitMode,
-      stripCount: packDetails.formFactor === 'tablet' ? 2 : 1,
-      totalQty: packDetails.defaultQty,
+      stripCount: 1,
+      totalQty: packDetails.unitsPerPack || 10,
       dailyDosage: packDetails.defaultDosage,
       bufferDays: packDetails.bufferDays,
       customMrp: med.mrp,
@@ -318,7 +318,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
             medicineId: item.medicine.id,
             category: item.category || effectiveCondition,
             dailyDosage: Number(item.dailyDosage) || 1,
-            lastPurchaseQty: Number(item.totalQty) || 30,
+            lastPurchaseQty: (Number(item.totalQty) > 0 ? Number(item.totalQty) : (packUnits || 10)),
             lastPurchaseDate: new Date().toISOString(),
             bufferDays: Number(item.bufferDays) || 3,
             customPackaging: packagingDesc,
@@ -347,7 +347,7 @@ export function OnboardPatientModal({ isOpen, onClose, onSuccess }: OnboardPatie
           return {
             id: `rx-${Date.now()}-${pIdx}`,
             dailyDosage: Number(item.dailyDosage) || 1,
-            lastPurchaseQty: Number(item.totalQty) || 30,
+            lastPurchaseQty: (Number(item.totalQty) > 0 ? Number(item.totalQty) : (packUnits || 10)),
             nextRefillDate: preview.targetDateIso || preview.refillDateStr,
             customPackaging: preview.isSyrup
               ? '1 Bottle (Syrup)'

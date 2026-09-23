@@ -93,12 +93,15 @@ export function Sidebar({
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   isActive
-                    ? 'bg-white/15 text-white shadow-sm backdrop-blur-sm'
+                    ? 'bg-white/15 text-white shadow-sm font-semibold backdrop-blur-sm'
                     : 'text-teal-200 hover:bg-white/10 hover:text-white'
                 }`}
               >
+                {isActive && (
+                  <span className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-teal-300 shadow-xs" />
+                )}
                 <item.icon className={`w-[18px] h-[18px] shrink-0 ${isActive ? 'text-teal-300' : ''}`} />
                 <span className="truncate">{item.name}</span>
               </Link>
@@ -109,12 +112,12 @@ export function Sidebar({
         {/* User Profile */}
         <div className="px-4 py-4 border-t border-teal-700/50">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-teal-600 flex items-center justify-center text-sm font-bold shrink-0 uppercase">
+            <div className="w-9 h-9 rounded-full bg-teal-600 flex items-center justify-center text-sm font-bold shrink-0 uppercase shadow-xs">
               {userName.split(' ').map(n => n[0]).join('').slice(0, 2) || 'RX'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{userName}</p>
-              <p className="text-xs text-teal-300 truncate capitalize">{userRole}</p>
+              <p className="text-sm font-semibold truncate text-white">{userName}</p>
+              <p className="text-[11px] text-teal-300 truncate capitalize">{userRole}</p>
             </div>
             <button
               onClick={handleLogout}
@@ -142,7 +145,7 @@ export function TopBar({ onMenuClick, userName }: { onMenuClick: () => void; use
   };
 
   return (
-    <header className="fixed top-0 left-0 lg:left-64 right-0 h-14 lg:h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 lg:px-6 z-30">
+    <header className="fixed top-0 left-0 lg:left-64 right-0 h-14 lg:h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-4 lg:px-6 z-30 shadow-2xs">
       <div className="flex items-center gap-3">
         {/* Hamburger on mobile */}
         <button
@@ -151,27 +154,41 @@ export function TopBar({ onMenuClick, userName }: { onMenuClick: () => void; use
         >
           <Menu className="w-5 h-5 text-gray-700" />
         </button>
-        <h2 className="text-base lg:text-lg font-semibold text-gray-800 font-heading">
-          <span className="hidden sm:inline">Welcome back, {displayName.split(' ')[0]} 👋</span>
-          <span className="sm:hidden font-bold">Manoj Medical Hall</span>
-        </h2>
+        <div>
+          <h2 className="text-sm lg:text-base font-bold text-gray-900 font-heading leading-tight">
+            <span className="hidden sm:inline">Welcome back, {displayName.split(' ')[0]} 👋</span>
+            <span className="sm:hidden font-bold">Manoj Medical Hall</span>
+          </h2>
+          <p className="hidden sm:block text-[11px] text-gray-500 font-medium">
+            Manoj Medical Hall • Sarfuddinpur (843118)
+          </p>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 lg:gap-4">
-        {/* Search — hidden on very small screens */}
-        <div className="relative hidden sm:block">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <div className="flex items-center gap-2 lg:gap-3.5">
+        {/* WhatsApp & Auto-Refill Live Status Pill */}
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-200/80 rounded-full text-emerald-800 text-[11px] font-bold shadow-2xs">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>WhatsApp Engine Live</span>
+        </div>
+
+        {/* Search with keyboard shortcut badge */}
+        <div className="relative hidden md:block">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search medicines, customers..."
-            className="pl-10 pr-4 py-2 w-48 lg:w-72 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all"
+            placeholder="Search medicines, patients..."
+            className="pl-9 pr-12 py-1.5 w-48 lg:w-60 text-xs bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all font-medium text-gray-800 placeholder-gray-400 shadow-2xs"
           />
+          <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-gray-400 bg-white border border-gray-200 rounded shadow-2xs">
+            ⌘K
+          </kbd>
         </div>
 
         {/* Instant QR Quick Trigger */}
         <Link
           href="/quick-qr"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-700 to-indigo-700 hover:from-teal-800 hover:to-indigo-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-800 hover:to-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all hover:shadow-sm"
           title="Instant Dynamic UPI QR Generator"
         >
           <QrCode className="w-3.5 h-3.5" />
@@ -180,14 +197,14 @@ export function TopBar({ onMenuClick, userName }: { onMenuClick: () => void; use
         </Link>
 
         {/* Profile & Logout dropdown / button */}
-        <div className="flex items-center gap-2 pl-3 border-l border-gray-200">
-          <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-sm font-bold uppercase">
+        <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+          <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center text-xs font-bold uppercase shadow-2xs">
             {initials}
           </div>
           <button
             onClick={handleLogout}
             title="Sign Out"
-            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-1.5 text-gray-400 hover:text-red-600 rounded-xl hover:bg-gray-100 transition-colors"
           >
             <LogOut className="w-4 h-4" />
           </button>

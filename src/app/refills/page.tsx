@@ -17,7 +17,15 @@ import {
   CUSTOMERS_UPDATED_EVENT,
   CustomerRecord,
 } from '@/lib/customer-sync';
-import { buildWhatsAppUrl } from '@/lib/utils';
+import {
+  buildWhatsAppUrl,
+  openWhatsAppDirect,
+  getWhatsAppWebUrl,
+  getWhatsAppApiUrl,
+  getWhatsAppAppUrl,
+  getWhatsAppNativeUrl,
+  cleanWhatsAppNumber
+} from '@/lib/utils';
 
 interface RefillItem {
   id: string;
@@ -237,8 +245,12 @@ export default function RefillsPage() {
     }
   };
 
-  const handleOpenWhatsAppDirect = (waMeUrl: string) => {
-    window.open(waMeUrl, '_blank', 'noopener,noreferrer');
+  const handleOpenWhatsAppDirect = (phone?: string, message?: string, waMeUrl?: string) => {
+    if (phone && message) {
+      openWhatsAppDirect(phone, message);
+    } else if (waMeUrl) {
+      window.open(waMeUrl, '_blank', 'noopener,noreferrer');
+    }
     setToastMsg('Opened WhatsApp! Message is pre-filled and ready to send.');
     setTimeout(() => setToastMsg(''), 4000);
     setWhatsappModal(null);
@@ -845,20 +857,53 @@ export default function RefillsPage() {
                 <span>Delivery: <strong>Free Doorstep</strong></span>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
-                <button
-                  onClick={() => handleCopyMessage(whatsappModal.message)}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5"
-                >
-                  <Copy size={15} /> {copied ? 'Copied!' : 'Copy Text'}
-                </button>
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={() => handleCopyMessage(whatsappModal.message)}
+                    className="px-4 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5"
+                  >
+                    <Copy size={15} /> {copied ? 'Copied!' : 'Copy Text'}
+                  </button>
 
-                <button
-                  onClick={() => handleOpenWhatsAppDirect(whatsappModal.waMeUrl)}
-                  className="flex-1 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-2 transition-colors"
-                >
-                  <ExternalLink size={16} /> Open in WhatsApp Web / App
-                </button>
+                  <button
+                    onClick={() => handleOpenWhatsAppDirect(whatsappModal.phone, whatsappModal.message, whatsappModal.waMeUrl)}
+                    className="flex-1 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <MessageCircle size={16} /> 1-Click WhatsApp Send
+                  </button>
+                </div>
+
+                {/* Direct 1-Click Native Links (Never Blocked by Popup Blockers) */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <a
+                    href={getWhatsAppWebUrl(whatsappModal.phone, whatsappModal.message)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                    title="Directly opens WhatsApp Web chat tab with recipient number in URL"
+                  >
+                    <span>Web ↗</span>
+                  </a>
+
+                  <a
+                    href={getWhatsAppNativeUrl(whatsappModal.phone, whatsappModal.message)}
+                    className="py-2 px-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                    title="Directly opens native WhatsApp Desktop app on Mac/PC"
+                  >
+                    <span>Desktop ↗</span>
+                  </a>
+
+                  <a
+                    href={getWhatsAppApiUrl(whatsappModal.phone, whatsappModal.message)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                    title="Directly opens WhatsApp Click-to-Chat dispatcher (universal)"
+                  >
+                    <span>WhatsApp API ↗</span>
+                  </a>
+                </div>
               </div>
             </div>
           </div>

@@ -66,14 +66,28 @@ export function formatWhatsAppPhone(phone: string | null | undefined): string {
 /**
  * Generates a direct WhatsApp Web URL (best for Desktop Mac/Windows browsers).
  * Directly opens the chat with that phone number without intermediate landing pages.
+ * Note: Must include trailing slash '/send/?phone=' so WhatsApp Web router does not strip query parameters.
  */
 export function getWhatsAppWebUrl(phone: string | null | undefined, message?: string): string {
   const cleanPhone = cleanWhatsAppNumber(phone);
   const textParam = message ? `&text=${encodeURIComponent(message)}` : '';
   if (cleanPhone) {
-    return `https://web.whatsapp.com/send?phone=${cleanPhone}${textParam}`;
+    return `https://web.whatsapp.com/send/?phone=${cleanPhone}${textParam}`;
   }
-  return message ? `https://web.whatsapp.com/send?text=${encodeURIComponent(message)}` : 'https://web.whatsapp.com/';
+  return message ? `https://web.whatsapp.com/send/?text=${encodeURIComponent(message)}` : 'https://web.whatsapp.com/';
+}
+
+/**
+ * Generates the official WhatsApp Click-to-Chat API URL (universal across Desktop and Web).
+ * Prompts desktop app if available or provides direct 1-click continuation to Web without dropping the number.
+ */
+export function getWhatsAppApiUrl(phone: string | null | undefined, message?: string): string {
+  const cleanPhone = cleanWhatsAppNumber(phone);
+  const textParam = message ? `&text=${encodeURIComponent(message)}` : '';
+  if (cleanPhone) {
+    return `https://api.whatsapp.com/send/?phone=${cleanPhone}${textParam}`;
+  }
+  return message ? `https://api.whatsapp.com/send/?text=${encodeURIComponent(message)}` : 'https://api.whatsapp.com/';
 }
 
 /**
@@ -102,7 +116,7 @@ export function getWhatsAppNativeUrl(phone: string | null | undefined, message?:
 
 /**
  * Generates a direct WhatsApp link that NEVER drops the phone number.
- * Defaults to WhatsApp Web on Desktop (Mac/PC) because wa.me drops the phone number on desktop redirects!
+ * Defaults to WhatsApp Web on Desktop (Mac/PC) with '/send/?phone=' to preserve recipient.
  * On Mobile, defaults to wa.me which opens the WhatsApp mobile app directly.
  */
 export function buildWhatsAppUrl(
@@ -115,25 +129,59 @@ export function buildWhatsAppUrl(
 }
 
 /**
+ * Normalizes an Indian phone number to exactly 10 digits for database and records.
+ */
+export function clean10DigitPhone(phone: string | null | undefined): string {
+  if (!phone) return '';
+  const digits = String(phone).replace(/[^0-9]/g, '');
+  if (digits.length === 10) return digits;
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  if (digits.length > 10) return digits.slice(-10);
+  return digits;
+}
+
+/**
  * Robustly opens WhatsApp in a new tab without being blocked by popup blockers.
- * Automatically falls back to window.location.href if the popup is blocked.
+ * NEVER navigates window.location.href away from the active pharmacy POS screen.
  */
 export function openWhatsAppDirect(
   phone: string | null | undefined,
   message: string,
   preferWeb?: boolean
-): void {
-  const useWeb = preferWeb !== undefined ? preferWeb : isDesktopDevice();
-  const url = buildWhatsAppUrl(phone, message, useWeb);
+): boolean {
+  if (typeof window === 'undefined') return false;
+  const cleanPhone = cleanWhatsAppNumber(phone);
+  const url = buildWhatsAppUrl(cleanPhone, message, preferWeb);
+
   try {
-    const win = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!win || win.closed || typeof win.closed === 'undefined') {
-      // Popup was blocked by browser — navigate directly
-      window.location.href = url;
+    const win = window.open(url, '_blank');
+    if (win) {
+      try {
+        win.focus();
+      } catch (_) {}
+      return true;
     }
-  } catch (_) {
-    window.location.href = url;
-  }
+  } catch (_) {}
+
+  // Fallback to anchor click (bypasses browser popup blockers for user click events)
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(a);
+      } catch (_) {}
+    }, 200);
+    return true;
+  } catch (_) {}
+
+  return false;
 }
 
 /**

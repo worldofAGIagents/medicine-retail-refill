@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
-import { cleanWhatsAppNumber, buildWhatsAppUrl } from '@/lib/utils';
+import {
+  cleanWhatsAppNumber,
+  buildWhatsAppUrl,
+  getWhatsAppWebUrl,
+  getWhatsAppApiUrl,
+  getWhatsAppAppUrl,
+  getWhatsAppNativeUrl
+} from '@/lib/utils';
 
 // Helper function to send single WhatsApp reminder
 async function sendSingleWhatsApp(payload: {
@@ -99,6 +106,10 @@ async function sendSingleWhatsApp(payload: {
   });
 
   const waMeUrl = buildWhatsAppUrl(formattedPhone, message);
+  const webUrl = getWhatsAppWebUrl(formattedPhone, message);
+  const apiUrl = getWhatsAppApiUrl(formattedPhone, message);
+  const appUrl = getWhatsAppAppUrl(formattedPhone, message);
+  const nativeUrl = getWhatsAppNativeUrl(formattedPhone, message);
 
   let apiSent = false;
   let apiError = null;
@@ -156,6 +167,10 @@ async function sendSingleWhatsApp(payload: {
     phone: formattedPhone,
     message,
     waMeUrl,
+    webUrl,
+    apiUrl,
+    appUrl,
+    nativeUrl,
     apiSent,
     apiError,
   };

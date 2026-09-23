@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout';
-import { ArrowLeft, Save, Trash2, Edit, AlertCircle, CheckCircle2, Search, Plus, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Edit, AlertCircle, CheckCircle2, Search, Plus, Minus, X, Loader2, Clock, Pill } from 'lucide-react';
 import { CHRONIC_CONDITIONS_LIST, detectMedicineFormFactor, parsePackDetails, FORM_FACTORS } from '@/lib/medicine-classifier';
 import { upsertLocalCustomer } from '@/lib/customer-sync';
 
@@ -67,6 +67,8 @@ export default function CustomerDetailPage() {
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
   const [selectedMed, setSelectedMed] = useState<Medicine | null>(null);
   const [newDosage, setNewDosage] = useState(1);
+  const [newStripCount, setNewStripCount] = useState(1);
+  const [newUnitsPerPack, setNewUnitsPerPack] = useState(10);
   const [newQty, setNewQty] = useState<number | ''>('');
   const [newPackaging, setNewPackaging] = useState('');
   const [newUnitLabel, setNewUnitLabel] = useState('tab/day');
@@ -77,15 +79,19 @@ export default function CustomerDetailPage() {
     setMedicineResults([]);
     setSearchQuery(med.name);
     const details = parsePackDetails(med);
+    const packUnits = (med.unitsPerPack && med.unitsPerPack > 0) ? med.unitsPerPack : details.unitsPerPack;
     setNewDosage(details.defaultDosage);
-    setNewQty('');
-    setNewPackaging('');
+    setNewUnitsPerPack(packUnits);
+    setNewStripCount(1);
+    setNewQty(packUnits); // 1 pack units, never hardcoded 30
+    setNewPackaging(details.defaultPackagingText);
     setNewUnitLabel(details.unitLabel);
   };
 
   // Edit Prescription States
   const [editingPresc, setEditingPresc] = useState<Prescription | null>(null);
   const [editDosage, setEditDosage] = useState<number | ''>(1);
+  const [editQty, setEditQty] = useState<number | ''>('');
   const [editPackaging, setEditPackaging] = useState<string>('');
   const [savingPresc, setSavingPresc] = useState(false);
 
@@ -164,6 +170,7 @@ export default function CustomerDetailPage() {
   const handleStartEditPresc = (p: Prescription) => {
     setEditingPresc(p);
     setEditDosage(p.dailyDosage || 1);
+    setEditQty(p.lastPurchaseQty || '');
     setEditPackaging(p.customPackaging || '');
   };
 
@@ -173,13 +180,17 @@ export default function CustomerDetailPage() {
     setErrorMsg('');
     setSuccessMsg('');
     try {
+      const payload: any = {
+        dailyDosage: Number(editDosage) || 1,
+        customPackaging: editPackaging,
+      };
+      if (editQty !== '' && !isNaN(Number(editQty)) && Number(editQty) > 0) {
+        payload.lastPurchaseQty = Number(editQty);
+      }
       const res = await fetch(`/api/prescriptions/${editingPresc.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dailyDosage: Number(editDosage) || 1,
-          customPackaging: editPackaging,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Failed to update prescription');
       setSuccessMsg('Prescription updated successfully!');
@@ -212,24 +223,33 @@ export default function CustomerDetailPage() {
     setAddingMed(true);
     setErrorMsg('');
     try {
+      const packUnits = (selectedMed.unitsPerPack && selectedMed.unitsPerPack > 0) ? selectedMed.unitsPerPack : newUnitsPerPack;
+      const effectiveQty = (newQty !== '' && !isNaN(Number(newQty)) && Number(newQty) > 0) ? Number(newQty) : packUnits;
+      const packagingDesc = newPackaging || (newStripCount > 1 ? `${newStripCount} Strips (${packUnits} tabs/strip)` : `${effectiveQty} ${newUnitLabel}`);
+
       const res = await fetch('/api/prescriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId,
           medicineId: selectedMed.id,
-          dailyDosage: newDosage,
-          quantity: newQty || 1,
-          packaging: newPackaging
+          dailyDosage: Number(newDosage) || 1,
+          quantity: effectiveQty,
+          lastPurchaseQty: effectiveQty,
+          packaging: packagingDesc,
+          customPackaging: packagingDesc,
+          unitType: 'tablets',
         })
       });
       if (!res.ok) {
-        // Fallback or ignore if api doesn't exist, just clear state to satisfy UI requirement
-        console.warn('API /api/prescriptions might not exist or failed.');
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to add medicine');
       }
-      setSuccessMsg('Medicine added (simulated / API called)!');
+      setSuccessMsg(`Added ${selectedMed.name} to patient prescription!`);
       setSelectedMed(null);
       setSearchQuery('');
+      setNewQty('');
+      setNewPackaging('');
       setMedicineResults([]);
       fetchCustomer();
     } catch (err: any) {
@@ -404,37 +424,67 @@ export default function CustomerDetailPage() {
         </div>
 
         {/* Add Medicine Section */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
-          <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide border-b border-gray-100 pb-3 mb-4">Add Medicine</h2>
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-5 relative">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Search Medicine</label>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 space-y-4">
+          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Add Medicine to Prescription</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Search catalog and customize strips, dosage, and packaging</p>
+            </div>
+            {selectedMed && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMed(null);
+                  setSearchQuery('');
+                  setNewQty('');
+                  setNewPackaging('');
+                }}
+                className="text-xs font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+              >
+                Change Medicine
+              </button>
+            )}
+          </div>
+
+          {!selectedMed ? (
+            <div className="relative">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Search Live Medicine Catalog</label>
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input 
                   type="text" 
                   value={searchQuery}
                   onChange={e => handleSearchMedicine(e.target.value)}
-                  placeholder="Type to search..."
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all" 
+                  placeholder="Type medicine name or salt (e.g. Telma, Amlodipine, Glycomet)..."
+                  className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all font-medium" 
                 />
               </div>
-              {medicineResults.length > 0 && !selectedMed && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
+
+              {medicineResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-20 max-h-60 overflow-y-auto divide-y divide-gray-50">
                   {medicineResults.map(med => {
                     const ff = detectMedicineFormFactor(med);
                     const cfg = FORM_FACTORS[ff];
+                    const packSize = (med.unitsPerPack && med.unitsPerPack > 0) ? med.unitsPerPack : 10;
                     return (
                       <div 
                         key={med.id} 
                         onClick={() => handleSelectMedicineForAdd(med)}
-                        className="p-2.5 px-3 hover:bg-gray-50 cursor-pointer text-sm font-medium border-b border-gray-100 last:border-0 flex items-center justify-between"
+                        className="p-3 hover:bg-teal-50/50 cursor-pointer text-sm transition-colors flex items-center justify-between group"
                       >
-                        <div>
-                          <span>{med.name}</span> <span className="text-xs text-gray-400 font-normal">({med.category})</span>
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900 group-hover:text-teal-900">{med.name}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${cfg.color}`}>
+                              {cfg.shortLabel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {med.genericName ? `${med.genericName} • ` : ''}Pack: {packSize} units {med.mrp ? `• MRP ₹${med.mrp}` : ''}
+                          </p>
                         </div>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${cfg.color}`}>
-                          {cfg.shortLabel}
+                        <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-lg shrink-0 group-hover:bg-teal-600 group-hover:text-white transition-all flex items-center gap-1">
+                          <Plus size={12} /> Select
                         </span>
                       </div>
                     );
@@ -442,28 +492,142 @@ export default function CustomerDetailPage() {
                 </div>
               )}
             </div>
-            
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Dosage ({newUnitLabel})</label>
-              <input type="number" min={1} value={newDosage} onChange={e => setNewDosage(Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all" />
-            </div>
-            
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Total Units</label>
-              <input type="number" min={1} value={newQty} onChange={e => setNewQty(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none transition-all" />
-              <p className="text-[10px] text-gray-400 mt-0.5 truncate">{newPackaging}</p>
-            </div>
+          ) : (
+            <div className="p-4 bg-teal-50/40 rounded-2xl border border-teal-200/80 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-teal-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold">
+                    <Pill size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm sm:text-base">{selectedMed.name}</h3>
+                    <p className="text-xs text-gray-600">
+                      {selectedMed.genericName ? `${selectedMed.genericName} • ` : ''}Pack Size: <strong>{newUnitsPerPack} units</strong> {selectedMed.mrp ? `• MRP ₹${selectedMed.mrp}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-teal-800 bg-teal-100/80 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+                  {selectedMed.category || 'Chronic Medicine'}
+                </span>
+              </div>
 
-            <div className="md:col-span-3">
-              <button 
-                onClick={handleAddMedicine} 
-                disabled={!selectedMed || addingMed}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus size={16} /> {addingMed ? 'Adding...' : 'Add Medicine'}
-              </button>
+              {/* Strip Counter & Dosage Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Pack / Strip Counter */}
+                <div className="bg-white p-3 rounded-xl border border-teal-100 space-y-1.5">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase">
+                    Quantity / Strip Count
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextCount = Math.max(1, newStripCount - 1);
+                        setNewStripCount(nextCount);
+                        setNewQty(nextCount * newUnitsPerPack);
+                        setNewPackaging(`${nextCount} Strip(s) (${newUnitsPerPack} tabs/strip)`);
+                      }}
+                      className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200"
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newStripCount}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 1 : Math.max(1, parseInt(e.target.value, 10));
+                        setNewStripCount(val);
+                        setNewQty(val * newUnitsPerPack);
+                        setNewPackaging(`${val} Strip(s) (${newUnitsPerPack} tabs/strip)`);
+                      }}
+                      className="w-16 text-center px-2 py-1.5 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextCount = newStripCount + 1;
+                        setNewStripCount(nextCount);
+                        setNewQty(nextCount * newUnitsPerPack);
+                        setNewPackaging(`${nextCount} Strip(s) (${newUnitsPerPack} tabs/strip)`);
+                      }}
+                      className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center font-bold transition-colors cursor-pointer border border-gray-200"
+                    >
+                      <Plus size={14} />
+                    </button>
+                    <span className="text-xs font-semibold text-gray-600">strips</span>
+                  </div>
+                  <p className="text-[11px] text-teal-800 font-semibold">
+                    = {newQty || (newStripCount * newUnitsPerPack)} total units
+                  </p>
+                </div>
+
+                {/* Total Units override */}
+                <div className="bg-white p-3 rounded-xl border border-teal-100 space-y-1.5">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase">
+                    Total Units ({newUnitLabel})
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newQty}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? '' : Number(e.target.value);
+                      setNewQty(val);
+                      if (val && newUnitsPerPack > 0) {
+                        setNewStripCount(Math.ceil(Number(val) / newUnitsPerPack));
+                      }
+                    }}
+                    placeholder={`e.g. ${newUnitsPerPack}`}
+                    className="w-full px-3 py-2 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                  />
+                  <p className="text-[10px] text-gray-500 truncate">{newPackaging || `${newUnitsPerPack} tabs/strip`}</p>
+                </div>
+
+                {/* Daily Dosage */}
+                <div className="bg-white p-3 rounded-xl border border-teal-100 space-y-1.5">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase">
+                    Daily Dosage ({newUnitLabel})
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newDosage}
+                    onChange={(e) => setNewDosage(Number(e.target.value) || 1)}
+                    className="w-full px-3 py-2 text-sm font-bold bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+                  />
+                  <p className="text-[10px] text-gray-500">
+                    Duration: ~{Math.floor((Number(newQty || newUnitsPerPack) / (Number(newDosage) || 1)))} days supply
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMed(null);
+                    setSearchQuery('');
+                    setNewQty('');
+                    setNewPackaging('');
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl cursor-pointer border border-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={addingMed}
+                  onClick={handleAddMedicine}
+                  className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {addingMed ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  <span>Add to Patient Prescription</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Order History */}
@@ -519,26 +683,48 @@ export default function CustomerDetailPage() {
               </div>
 
               <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Daily Dosage (tablets/day)</label>
-                  <input 
-                    type="number" 
-                    min={1} 
-                    value={editDosage} 
-                    onChange={e => setEditDosage(e.target.value === '' ? '' : Number(e.target.value))} 
-                    className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none" 
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Daily Dosage</label>
+                    <input 
+                      type="number" 
+                      min={1} 
+                      value={editDosage} 
+                      onChange={e => setEditDosage(e.target.value === '' ? '' : Number(e.target.value))} 
+                      className="w-full px-3 py-2 text-sm font-bold bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none" 
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Total Quantity (Units)</label>
+                    <input 
+                      type="number" 
+                      min={1} 
+                      placeholder="e.g. 10, 15, 20"
+                      value={editQty} 
+                      onChange={e => setEditQty(e.target.value === '' ? '' : Number(e.target.value))} 
+                      className="w-full px-3 py-2 text-sm font-bold bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none" 
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Packaging (e.g. 15 Tablets/Strip, 400g Tin)</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Packaging (e.g. 1 Strip, 15 Tabs/Strip, 400g Tin)</label>
                   <input 
                     type="text" 
                     value={editPackaging} 
                     onChange={e => setEditPackaging(e.target.value)} 
+                    placeholder="e.g. 1 Strip (10 tabs/strip)"
                     className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:bg-white outline-none" 
                   />
                 </div>
+
+                {editQty && editDosage && (
+                  <div className="p-2.5 bg-teal-50 rounded-xl border border-teal-100 flex items-center justify-between text-xs text-teal-800">
+                    <span className="font-medium">Forecast Duration:</span>
+                    <span className="font-bold">~{Math.floor(Number(editQty) / (Number(editDosage) || 1))} days supply</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">

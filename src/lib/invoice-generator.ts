@@ -579,23 +579,13 @@ export async function shareInvoiceViaWhatsApp(
   const text = `🧾 *${pharmacy.name}* - Invoice ${bill.invoiceNo}\nAmount: ₹${bill.netPayable}\n📎 Invoice image downloaded — please share it in this chat.\n🙏 धन्यवाद!`;
   const waUrl = buildWhatsAppUrl(cleanPhone, text, preferWeb);
 
-  // Pre-open blank tab synchronously in user event context to guarantee popup blocker bypass
-  let popup: Window | null = null;
-  try {
-    popup = window.open('about:blank', '_blank');
-  } catch (_) {}
+  // 1. Immediately open WhatsApp in a new tab synchronously (zero popup blocking!)
+  openWhatsAppDirect(cleanPhone, text, preferWeb);
 
-  // Generate the high-res canvas invoice
-  let blob: Blob | null = null;
+  // 2. Concurrently generate the high-res canvas invoice and trigger download/clipboard
   try {
-    blob = await generateInvoiceImage(bill, pharmacy);
-  } catch (err) {
-    console.warn('Canvas invoice generation warning:', err);
-  }
-
-  // 1. Auto-download the image
-  if (blob) {
-    try {
+    const blob = await generateInvoiceImage(bill, pharmacy);
+    if (blob) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -604,28 +594,14 @@ export async function shareInvoiceViaWhatsApp(
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch (_) {}
 
-    // 2. Also copy image to clipboard if supported by browser
-    try {
+      // Copy image to clipboard if supported by browser
       if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
         navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
       }
-    } catch (_) {}
-  }
-
-  // 3. Navigate the pre-opened popup to WhatsApp
-  if (popup && !popup.closed) {
-    popup.location.href = waUrl;
-  } else {
-    try {
-      const w = window.open(waUrl, '_blank', 'noopener,noreferrer');
-      if (!w || w.closed) {
-        window.location.href = waUrl;
-      }
-    } catch (_) {
-      window.location.href = waUrl;
     }
+  } catch (err) {
+    console.warn('Canvas invoice generation warning:', err);
   }
 
   return waUrl;
@@ -658,22 +634,13 @@ export async function sharePaymentQrViaWhatsApp(
   const text = `💳 *${payee}*\nAmount to Pay: *₹${numAmount.toFixed(2)}*\nUPI ID: \`${details.upiId}\`\n📎 Payment QR image downloaded — please share/scan to pay via Google Pay, PhonePe or Paytm.\n🙏 धन्यवाद!`;
   const waUrl = buildWhatsAppUrl(cleanPhone, text, preferWeb);
 
-  // Pre-open blank tab synchronously
-  let popup: Window | null = null;
-  try {
-    popup = window.open('about:blank', '_blank');
-  } catch (_) {}
+  // 1. Immediately open WhatsApp in a new tab synchronously (zero popup blocking!)
+  openWhatsAppDirect(cleanPhone, text, preferWeb);
 
-  let blob: Blob | null = null;
+  // 2. Concurrently generate the payment QR image and trigger download/clipboard
   try {
-    blob = await generatePaymentQrImage(details);
-  } catch (err) {
-    console.warn('Canvas payment QR generation warning:', err);
-  }
-
-  // 1. Auto-download the image
-  if (blob) {
-    try {
+    const blob = await generatePaymentQrImage(details);
+    if (blob) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -682,28 +649,13 @@ export async function sharePaymentQrViaWhatsApp(
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch (_) {}
 
-    // 2. Also copy to clipboard if supported
-    try {
       if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
         navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
       }
-    } catch (_) {}
-  }
-
-  // 3. Navigate to WhatsApp
-  if (popup && !popup.closed) {
-    popup.location.href = waUrl;
-  } else {
-    try {
-      const w = window.open(waUrl, '_blank', 'noopener,noreferrer');
-      if (!w || w.closed) {
-        window.location.href = waUrl;
-      }
-    } catch (_) {
-      window.location.href = waUrl;
     }
+  } catch (err) {
+    console.warn('Canvas payment QR generation warning:', err);
   }
 
   return waUrl;

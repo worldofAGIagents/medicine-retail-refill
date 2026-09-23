@@ -81,7 +81,7 @@ export default function PrescriptionsPage() {
   const [dosage, setDosage] = useState(1);
   const [schedule, setSchedule] = useState({ morning: true, afternoon: false, evening: false, night: false });
   const [lastPurchase, setLastPurchase] = useState(new Date().toISOString().split('T')[0]);
-  const [qty, setQty] = useState(30);
+  const [qty, setQty] = useState<number | ''>('');
   const [bufferDays, setBufferDays] = useState(3);
   const [doctorName, setDoctorName] = useState('');
 
@@ -115,7 +115,7 @@ export default function PrescriptionsPage() {
           dosageSchedule: (p as any).dosageSchedule || null,
           doctorName: p.doctorName || null,
           lastPurchaseDate: p.lastPurchaseDate || new Date().toISOString(),
-          lastPurchaseQty: Number(p.lastPurchaseQty) || 30,
+          lastPurchaseQty: Number(p.lastPurchaseQty) || (p.medicine?.unitsPerPack || 10),
           nextRefillDate: p.nextRefillDate || new Date().toISOString(),
           bufferDays: Number(p.bufferDays) || 3,
           customPackaging: p.customPackaging,
@@ -303,40 +303,41 @@ export default function PrescriptionsPage() {
     setMedDropdownOpen(false);
 
     const pack = parsePackDetails(med);
+    const defaultUnits = (med.unitsPerPack && med.unitsPerPack > 0) ? med.unitsPerPack : pack.unitsPerPack;
     if (pack.formFactor === 'insulin') {
       setCustomUnitType('units');
       setDosage(pack.defaultDosage);
-      setQty(pack.defaultQty);
+      setQty(defaultUnits);
       setCustomPackagingText(pack.defaultPackagingText);
       setCustomUnitsPerPack(pack.unitsPerPack);
       setBufferDays(pack.bufferDays);
     } else if (pack.formFactor === 'syrup') {
       setCustomUnitType('ml');
       setDosage(pack.defaultDosage);
-      setQty(pack.defaultQty);
+      setQty(defaultUnits);
       setCustomPackagingText(pack.defaultPackagingText);
       setCustomUnitsPerPack(pack.unitsPerPack);
       setBufferDays(pack.bufferDays);
     } else if (pack.formFactor === 'inhaler') {
       setCustomUnitType('puffs');
       setDosage(pack.defaultDosage);
-      setQty(pack.defaultQty);
+      setQty(defaultUnits);
       setCustomPackagingText(pack.defaultPackagingText);
       setCustomUnitsPerPack(pack.unitsPerPack);
       setBufferDays(pack.bufferDays);
     } else if (pack.formFactor === 'infant_milk') {
       setCustomUnitType('grams');
       setDosage(pack.defaultDosage);
-      setQty(pack.defaultQty);
+      setQty(defaultUnits);
       setCustomPackagingText(pack.defaultPackagingText);
       setCustomUnitsPerPack(pack.unitsPerPack);
       setBufferDays(pack.bufferDays);
     } else {
       setCustomUnitType('tablets');
       setDosage(1);
-      setQty((med.unitsPerPack || 10) * 3); // 3 strips
-      setCustomPackagingText(`${med.unitsPerPack || 10} tablets per strip`);
-      setCustomUnitsPerPack(med.unitsPerPack || 10);
+      setQty(defaultUnits); // 1 strip default
+      setCustomPackagingText(`${defaultUnits} tablets per strip`);
+      setCustomUnitsPerPack(defaultUnits);
       setBufferDays(3);
     }
   };

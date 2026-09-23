@@ -10,7 +10,9 @@ import {
   buildWhatsAppUrl,
   openWhatsAppDirect,
   getWhatsAppWebUrl,
+  getWhatsAppApiUrl,
   getWhatsAppAppUrl,
+  getWhatsAppNativeUrl,
   cleanWhatsAppNumber
 } from '@/lib/utils';
 
@@ -117,7 +119,7 @@ export function QuickQrModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShareWhatsApp = (preferWeb = false) => {
+  const handleShareWhatsApp = (preferWeb?: boolean) => {
     const msg = `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine refill bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Click to pay instantly via UPI (GPay/PhonePe/Paytm/BHIM):\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`;
     openWhatsAppDirect(phone, msg, preferWeb);
   };
@@ -289,7 +291,7 @@ export function QuickQrModal({
           <div className="space-y-2 pt-1">
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => handleShareWhatsApp(false)}
+                onClick={() => handleShareWhatsApp()}
                 disabled={numAmount <= 0}
                 className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
@@ -317,7 +319,7 @@ export function QuickQrModal({
             </div>
 
             {/* Direct 1-Click Native Links (Never Blocked by Popup Blockers) */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 pt-1">
               <a
                 href={getWhatsAppWebUrl(
                   phone,
@@ -325,23 +327,34 @@ export function QuickQrModal({
                 )}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="py-1.5 px-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
-                title="Open WhatsApp Web directly"
+                className="py-1.5 px-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                title="Open WhatsApp Web directly with phone number in URL"
               >
-                <span>WhatsApp Web ↗</span>
+                <span>Web ↗</span>
               </a>
 
               <a
-                href={getWhatsAppAppUrl(
+                href={getWhatsAppNativeUrl(
+                  phone,
+                  `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine refill bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Click to pay instantly via UPI (GPay/PhonePe/Paytm/BHIM):\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`
+                )}
+                className="py-1.5 px-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                title="Open native WhatsApp Desktop app directly"
+              >
+                <span>Desktop ↗</span>
+              </a>
+
+              <a
+                href={getWhatsAppApiUrl(
                   phone,
                   `Namaste ${customerName ? customerName + ' ji' : 'Customer'}, your medicine refill bill from *${payeeName}* is *₹${formattedAmount}*.\n\n👉 Click to pay instantly via UPI (GPay/PhonePe/Paytm/BHIM):\n${upiLink}\n\nUPI ID: ${cleanUpiId}\nThank you!`
                 )}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="py-1.5 px-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
-                title="Open WhatsApp App directly"
+                className="py-1.5 px-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors text-center"
+                title="Open official WhatsApp Click-to-Chat dispatcher (universal)"
               >
-                <span>WhatsApp App ↗</span>
+                <span>WhatsApp API ↗</span>
               </a>
             </div>
           </div>

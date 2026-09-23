@@ -8,7 +8,7 @@ import {
   ArrowRight, Bell, Sparkles, UserPlus, Heart, CheckCircle2,
   TrendingUp, Phone, MapPin, Pill, Calendar, Clock, QrCode,
   Printer, MessageCircle, AlertTriangle, Search, Filter, Receipt,
-  Syringe, FlaskConical, Wind, Baby, IndianRupee, Eye, ChevronRight, X
+  Syringe, FlaskConical, Wind, Baby, IndianRupee, Eye, ChevronRight, X, ExternalLink
 } from 'lucide-react';
 import { OnboardPatientModal } from '@/components/OnboardPatientModal';
 import { renderTemplate, DEFAULT_TEMPLATES } from '@/lib/templates';
@@ -25,7 +25,15 @@ import {
   mergeCustomerLists,
   CUSTOMERS_UPDATED_EVENT,
 } from '@/lib/customer-sync';
-import { buildWhatsAppUrl, openWhatsAppDirect, getWhatsAppWebUrl, getWhatsAppAppUrl } from '@/lib/utils';
+import {
+  buildWhatsAppUrl,
+  openWhatsAppDirect,
+  getWhatsAppWebUrl,
+  getWhatsAppApiUrl,
+  getWhatsAppAppUrl,
+  getWhatsAppNativeUrl,
+  cleanWhatsAppNumber
+} from '@/lib/utils';
 
 interface PrescriptionItem {
   id: string;
@@ -429,7 +437,7 @@ export default function DashboardPage() {
   }, [allRefills, refillFilter, formFactorFilter, selectedVillage, searchQuery]);
 
   // 1-Click WhatsApp Trigger
-  const handleSendWhatsApp = (item: RefillCardItem, preferWeb = false) => {
+  const handleSendWhatsApp = (item: RefillCardItem, preferWeb?: boolean) => {
     const dateFormatted = new Date(item.nextRefillDateStr).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
@@ -1004,11 +1012,27 @@ export default function DashboardPage() {
                               <button
                                 onClick={() => handleSendWhatsApp(refill)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold transition-all hover:shadow-xs cursor-pointer"
-                                title="Send WhatsApp refill alert in Hindi"
+                                title="Send 1-Click WhatsApp refill alert in Hindi"
                               >
                                 <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
                                 <span>WhatsApp</span>
                               </button>
+                              <a
+                                href={getWhatsAppWebUrl(refill.phone, renderTemplate(refill.daysRemaining <= 0 ? DEFAULT_TEMPLATES.overdueTemplate : DEFAULT_TEMPLATES.hindiTemplate, {
+                                  name: refill.customerName,
+                                  medicine: refill.medicineName,
+                                  days: refill.daysRemaining <= 0 ? 'आज समाप्त हो रही है' : (refill.daysRemaining === 1 ? 'कल समाप्त हो रही है (1 दिन)' : `${refill.daysRemaining} दिन`),
+                                  date: new Date(refill.nextRefillDateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+                                  address: refill.village,
+                                  phone: '843118 (Manoj Medical Hall)',
+                                }))}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs transition-all hover:shadow-xs"
+                                title="Open WhatsApp Web directly with phone number in URL"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                              </a>
                               <Link
                                 href={`/billing?phone=${refill.phone}&name=${encodeURIComponent(refill.customerName)}&village=${encodeURIComponent(refill.village)}&customerId=${refill.customerId}${refill.medicineId ? `&medId=${refill.medicineId}` : ''}`}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold transition-all hover:shadow-xs cursor-pointer"

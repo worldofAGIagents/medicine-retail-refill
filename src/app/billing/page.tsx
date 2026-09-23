@@ -33,6 +33,7 @@ import {
   buildWhatsAppUrl,
   cleanWhatsAppNumber,
   getWhatsAppWebUrl,
+  getWhatsAppApiUrl,
   getWhatsAppAppUrl,
   getWhatsAppNativeUrl,
   openWhatsAppDirect
@@ -666,13 +667,13 @@ export default function BillingPage() {
 
   // WhatsApp Share Image Invoice (with embedded QR code)
   const handleShareWhatsAppImage = async (bill: BillSummary, preferWeb?: boolean) => {
+    const activeBill = modalPhone.trim() ? { ...bill, customerPhone: modalPhone.trim() } : bill;
     setIsGeneratingImage(true);
     try {
-      const activeBill = modalPhone.trim() ? { ...bill, customerPhone: modalPhone.trim() } : bill;
       await shareInvoiceViaWhatsApp(activeBill, pharmacy, preferWeb);
     } catch (err) {
       console.error('Error sharing invoice image:', err);
-      handleShareWhatsApp(bill, preferWeb);
+      handleShareWhatsApp(activeBill, preferWeb);
     } finally {
       setIsGeneratingImage(false);
     }
@@ -688,9 +689,9 @@ export default function BillingPage() {
 
   // Download Invoice PNG Image
   const handleDownloadInvoice = async (bill: BillSummary) => {
+    const activeBill = modalPhone.trim() ? { ...bill, customerPhone: modalPhone.trim() } : bill;
     setIsGeneratingImage(true);
     try {
-      const activeBill = modalPhone.trim() ? { ...bill, customerPhone: modalPhone.trim() } : bill;
       await downloadInvoiceImage(activeBill, pharmacy);
     } catch (err) {
       console.error('Error downloading invoice image:', err);
@@ -717,6 +718,7 @@ export default function BillingPage() {
       console.error('Error sharing QR image:', err);
     } finally {
       setIsGeneratingImage(false);
+    }
   };
 
   // Native Print
@@ -1407,15 +1409,7 @@ export default function BillingPage() {
                         maxLength={16}
                         placeholder="9876543210"
                         value={customerPhone}
-                        onChange={(e) => {
-                          let cleaned = e.target.value.replace(/[^0-9]/g, '');
-                          if (cleaned.length > 10 && (cleaned.startsWith('91') || cleaned.startsWith('0'))) {
-                            cleaned = cleaned.slice(-10);
-                          } else if (cleaned.length > 10) {
-                            cleaned = cleaned.slice(0, 10);
-                          }
-                          setCustomerPhone(cleaned);
-                        }}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none font-mono"
                       />
                     </div>
@@ -1441,15 +1435,7 @@ export default function BillingPage() {
                         maxLength={16}
                         placeholder="10-digit mobile"
                         value={customerPhone}
-                        onChange={(e) => {
-                          let cleaned = e.target.value.replace(/[^0-9]/g, '');
-                          if (cleaned.length > 10 && (cleaned.startsWith('91') || cleaned.startsWith('0'))) {
-                            cleaned = cleaned.slice(-10);
-                          } else if (cleaned.length > 10) {
-                            cleaned = cleaned.slice(0, 10);
-                          }
-                          setCustomerPhone(cleaned);
-                        }}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none font-mono"
                       />
                     </div>
@@ -1698,53 +1684,51 @@ export default function BillingPage() {
 
                   {/* Recipient Indicator */}
                   {cleanWhatsAppNumber(modalPhone || completedBill.customerPhone) ? (
-                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1 font-mono">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Direct Chat: +91 {cleanWhatsAppNumber(modalPhone || completedBill.customerPhone).slice(-10)}
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 font-mono shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Chat Ready: +91 {cleanWhatsAppNumber(modalPhone || completedBill.customerPhone).slice(-10)}
                     </span>
                   ) : (
-                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                      No mobile entered
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span>⚠️</span> Enter mobile number to send
                     </span>
                   )}
                 </div>
 
                 {/* Recipient Phone Input (Editable in-modal) */}
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
-                      +91
-                    </span>
-                    <input
-                      type="tel"
-                      maxLength={16}
-                      placeholder="Enter 10-digit mobile for WhatsApp"
-                      value={modalPhone}
-                      onChange={(e) => {
-                        let cleaned = e.target.value.replace(/[^0-9]/g, '');
-                        if (cleaned.length > 10 && (cleaned.startsWith('91') || cleaned.startsWith('0'))) {
-                          cleaned = cleaned.slice(-10);
-                        } else if (cleaned.length > 10) {
-                          cleaned = cleaned.slice(0, 10);
-                        }
-                        setModalPhone(cleaned);
-                      }}
-                      className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 shadow-2xs"
-                    />
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                        +91
+                      </span>
+                      <input
+                        type="tel"
+                        maxLength={16}
+                        placeholder="Enter 10-digit mobile for WhatsApp"
+                        value={modalPhone}
+                        onChange={(e) => setModalPhone(e.target.value)}
+                        className={`w-full pl-9 pr-3 py-2 bg-white border rounded-xl text-xs font-mono font-bold text-slate-800 placeholder-slate-400 outline-none transition-all shadow-2xs ${
+                          cleanWhatsAppNumber(modalPhone)
+                            ? 'border-emerald-400 ring-2 ring-emerald-500/20'
+                            : 'border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500'
+                        }`}
+                      />
+                    </div>
+                    {modalPhone !== completedBill.customerPhone && cleanWhatsAppNumber(modalPhone) && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-2 rounded-xl border border-emerald-200 whitespace-nowrap">
+                        ✓ Phone Updated
+                      </span>
+                    )}
                   </div>
-                  {modalPhone !== completedBill.customerPhone && modalPhone.length === 10 && (
-                    <span className="text-[10px] font-bold text-emerald-600 bg-white px-2 py-1.5 rounded-xl border border-emerald-200">
-                      Target Updated
-                    </span>
-                  )}
                 </div>
 
                 {/* Primary Automated WhatsApp Button */}
                 <button
                   type="button"
-                  disabled={isGeneratingImage}
+                  disabled={isGeneratingImage || !cleanWhatsAppNumber(modalPhone || completedBill.customerPhone)}
                   onClick={() => handleShareWhatsAppImage(completedBill)}
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all disabled:opacity-60 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isGeneratingImage ? (
                     <>
@@ -1764,7 +1748,7 @@ export default function BillingPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="py-2 px-2 bg-white hover:bg-emerald-50/80 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
-                    title="Directly opens WhatsApp Web chat tab on PC/Mac without landing page"
+                    title="Directly opens WhatsApp Web chat tab with phone number preloaded in URL"
                   >
                     <ExternalLink size={12} className="text-emerald-600 shrink-0" />
                     <span>WhatsApp Web</span>
@@ -1780,14 +1764,14 @@ export default function BillingPage() {
                   </a>
 
                   <a
-                    href={getWhatsAppAppUrl(modalPhone.trim() || completedBill.customerPhone, generateWhatsAppBillText(completedBill, pharmacy))}
+                    href={getWhatsAppApiUrl(modalPhone.trim() || completedBill.customerPhone, generateWhatsAppBillText(completedBill, pharmacy))}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="py-2 px-2 bg-white hover:bg-emerald-50/80 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors text-center"
-                    title="Directly opens WhatsApp Application on phone or wa.me"
+                    title="Official WhatsApp Click-to-Chat dispatcher (universal across all platforms)"
                   >
                     <Smartphone size={12} className="text-emerald-600 shrink-0" />
-                    <span>Mobile App</span>
+                    <span>WhatsApp API</span>
                   </a>
                 </div>
 
