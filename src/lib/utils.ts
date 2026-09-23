@@ -66,15 +66,14 @@ export function formatWhatsAppPhone(phone: string | null | undefined): string {
 /**
  * Generates a direct WhatsApp Web URL (best for Desktop Mac/Windows browsers).
  * Directly opens the chat with that phone number without intermediate landing pages.
- * Note: Must include trailing slash '/send/?phone=' so WhatsApp Web router does not strip query parameters.
  */
 export function getWhatsAppWebUrl(phone: string | null | undefined, message?: string): string {
   const cleanPhone = cleanWhatsAppNumber(phone);
   const textParam = message ? `&text=${encodeURIComponent(message)}` : '';
   if (cleanPhone) {
-    return `https://web.whatsapp.com/send/?phone=${cleanPhone}${textParam}`;
+    return `https://web.whatsapp.com/send?phone=${cleanPhone}${textParam}`;
   }
-  return message ? `https://web.whatsapp.com/send/?text=${encodeURIComponent(message)}` : 'https://web.whatsapp.com/';
+  return message ? `https://web.whatsapp.com/send?text=${encodeURIComponent(message)}` : 'https://web.whatsapp.com/';
 }
 
 /**
@@ -91,7 +90,7 @@ export function getWhatsAppApiUrl(phone: string | null | undefined, message?: st
 }
 
 /**
- * Generates a direct WhatsApp App URL (best for Mobile).
+ * Generates a direct WhatsApp App URL (universal standard for Mobile and Desktop).
  */
 export function getWhatsAppAppUrl(phone: string | null | undefined, message?: string): string {
   const cleanPhone = cleanWhatsAppNumber(phone);
@@ -115,17 +114,19 @@ export function getWhatsAppNativeUrl(phone: string | null | undefined, message?:
 }
 
 /**
- * Generates a direct WhatsApp link that NEVER drops the phone number.
- * Defaults to WhatsApp Web on Desktop (Mac/PC) with '/send/?phone=' to preserve recipient.
- * On Mobile, defaults to wa.me which opens the WhatsApp mobile app directly.
+ * Generates a direct WhatsApp link that ALWAYS links directly to the recipient's phone number.
+ * Defaults to 'https://wa.me/91XXXXXXXXXX?text=...' which is WhatsApp's universal Click-to-Chat standard.
+ * Never drops the phone number or forces the cashier to manually search/add contacts in WhatsApp.
  */
 export function buildWhatsAppUrl(
   phone: string | null | undefined,
   message?: string,
   preferWeb?: boolean
 ): string {
-  const useWeb = preferWeb !== undefined ? preferWeb : isDesktopDevice();
-  return useWeb ? getWhatsAppWebUrl(phone, message) : getWhatsAppAppUrl(phone, message);
+  if (preferWeb) {
+    return getWhatsAppWebUrl(phone, message);
+  }
+  return getWhatsAppAppUrl(phone, message);
 }
 
 /**
